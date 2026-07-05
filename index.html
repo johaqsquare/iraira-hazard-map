@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>イライラ報告フォーム</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    select, button { width: 100%; padding: 15px; margin-top: 20px; font-size: 16px; }
+    button { background-color: #06C755; color: white; border: none; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <h2>イライラ報告フォーム</h2>
+  <p>現在の状況を選択してください。</p>
+  
+  <select id="category">
+    <option value="ポイ捨て">ポイ捨て</option>
+    <option value="騒音">騒音</option>
+    <option value="たむろ">たむろ</option>
+    <option value="キャッチ">キャッチ</option>
+    <option value="ペットの糞">ペットの糞</option>
+  </select>
+
+  <button id="submitBtn" onclick="submitReport()">現在地を取得して報告する</button>
+
+  <script>
+    // 🌟 1. LIFF IDを設定
+    liff.init({ liffId: 'ここにLIFF_IDを貼り付けます' }).then(() => {
+        if (!liff.isLoggedIn()) {
+            liff.login(); // LINE外で開かれた場合はログインを促す
+        }
+    });
+
+    function submitReport() {
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.innerText = '位置情報を取得中...';
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const category = document.getElementById('category').value;
+            
+            // LINEのユーザーIDを取得
+            liff.getProfile().then(profile => {
+              const userId = profile.userId;
+
+              // 🌟 2. 送信するデータを作成
+              const payload = {
+                userId: userId,
+                category: category,
+                lat: lat,
+                lng: lng
+              };
+
+              // 🌟 3. GASのAPI（デプロイしたURL）に向けてデータを送信
+              fetch('ここに新しくデプロイしたGASのURLを貼り付けます', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+              })
+              .then(response => response.json())
+              .then(result => {
+                alert(result.message);
+                liff.closeWindow(); // 成功したらLINEの画面を閉じる
+              })
+              .catch(error => {
+                alert('通信エラーが発生しました。');
+                btn.disabled = false;
+                btn.innerText = '現在地を取得して報告する';
+              });
+            }).catch(err => {
+              alert('LINEプロフィールの取得に失敗しました。');
+              btn.disabled = false;
+              btn.innerText = '現在地を取得して報告する';
+            });
+          },
+          function(error) {
+            alert('位置情報が取得できません。スマホの設定でLINEとブラウザの位置情報をONにしてください。');
+            btn.disabled = false;
+            btn.innerText = '現在地を取得して報告する';
+          }
+        );
+      } else {
+        alert('このブラウザは位置情報に対応していません。');
+      }
+    }
+  </script>
+</body>
+</html>
