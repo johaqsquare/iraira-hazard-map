@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ハザードマップ（錦糸町）</title>
+  <style>
+    /* マップを画面いっぱいに表示するためのスタイル */
+    html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; }
+    #map { height: 100%; width: 100%; }
+    
+    /* 読み込み中の表示デザイン */
+    #loading { 
+      position: absolute; top: 10px; left: 10px; 
+      background: white; padding: 10px 15px; 
+      z-index: 5; border-radius: 5px; 
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3); 
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">熱源データを読み込み中...</div>
+  <div id="map"></div>
+
+  <script>
+    // 🌟 【要変更】フェーズ2で控えておいた「GASのウェブアプリURL」をここに貼ります
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
+
+    let map, heatmap;
+
+    // Google Maps APIが読み込まれたら自動的に実行される関数
+    async function initMap() {
+      // 錦糸町駅付近を中心に設定
+      const kinshicho = { lat: 35.6966, lng: 139.8143 };
+      
+      // 地図の描画
+      map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 16,
+        center: kinshicho,
+        mapTypeId: 'roadmap',
+        disableDefaultUI: true, // 余計なボタンを消してスッキリさせる
+        zoomControl: true       // ズームボタンだけ残す
+      });
+
+      try {
+        // バックエンド（GAS）から計算済みのデータを取得
+        const response = await fetch(GAS_URL);
+        const data = await response.json();
+        
+        // 取得したデータをGoogle Mapsのヒートマップ用フォーマットに変換
+        const heatmapData = data.map(point => {
+          return {
+            location: new google.maps.LatLng(point.lat, point.lng),
+            weight: point.calculatedEnergy // 数学エンジンが弾き出した「熱量（ウェイト）」
+          };
+        });
+
+        // ヒートマップレイヤーを作成して地図に重ねる
+        heatmap = new google.maps.visualization.HeatmapLayer({
+          data: heatmapData,
+          map: map,
+          radius: 35,    // モヤの広がり具合（ピクセル）
+          opacity: 0.7,  // モヤの透明度
+          // グラデーションの色も自由にカスタマイズ可能です（デフォルトは緑→赤）
+        });
+
+        // 読み込み完了したら「読み込み中」表示を消す
+        document.getElementById('loading').style.display = 'none';
+        
+      } catch (error) {
+        console.error('データの取得に失敗しました:', error);
+        document.getElementById('loading').innerText = 'データの読み込みに失敗しました';
+      }
+    }
+  </script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBMCEQHdlzcrcLI4hziAioehbIs4CRWerA&libraries=visualization&callback=initMap"></script>
+</body>
+</html>
