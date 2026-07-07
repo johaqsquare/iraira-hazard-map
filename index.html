@@ -1,93 +1,208 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>イライラ報告フォーム</title>
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <title>イライラハザードマップ（錦糸町）</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    select, button { width: 100%; padding: 15px; margin-top: 20px; font-size: 16px; }
-    button { background-color: #06C755; color: white; border: none; border-radius: 5px; }
+    /* 画面全体のレイアウト：上半分がマップ、下半分がフォーム */
+    html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; }
+    
+    #map { flex: 1; width: 100%; position: relative; }
+    
+    #form-container { 
+      padding: 20px; 
+      background: #f8f9fa; 
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.1); 
+      box-sizing: border-box;
+    }
+    
+    h2 { margin: 0 0 10px 0; font-size: 18px; }
+    p { margin: 0 0 15px 0; font-size: 14px; color: #666; }
+    select, button { width: 100%; padding: 12px; margin-top: 10px; font-size: 16px; border-radius: 5px; box-sizing: border-box; }
+    select { border: 1px solid #ccc; background: white; }
+    button { background-color: #06C755; color: white; border: none; font-weight: bold; cursor: pointer; }
+    button:disabled { background-color: #aaa; cursor: not-serif; }
+
+    /* トースト通知（画面上部にフワッと出るメッセージ） */
+    #toast {
+      position: absolute; top: -50px; left: 50%; transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8); color: white; padding: 10px 20px;
+      border-radius: 20px; font-size: 14px; z-index: 1000;
+      transition: top 0.5s ease-in-out;
+    }
+    #toast.show { top: 20px; }
   </style>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
-  <h2>イライラ報告フォーム</h2>
-  <p>現在の状況を選択してください。</p>
-  
-  <select id="category">
-    <option value="ポイ捨て">ポイ捨て</option>
-    <option value="騒音">騒音</option>
-    <option value="たむろ">たむろ</option>
-    <option value="キャッチ">キャッチ</option>
-    <option value="ペットの糞">ペットの糞</option>
-  </select>
 
-  <button id="submitBtn" onclick="submitReport()">現在地を取得して報告する</button>
+  <div id="toast"></div>
+
+  <div id="map"></div>
+
+  <div id="form-container">
+    <h2>イライラ報告フォーム</h2>
+    <p>現在の状況を選択して報告してください。目の前のマップに即座に反映されます。</p>
+    
+    <select id="category">
+      <option value="ポイ捨て">ポイ捨て</option>
+      <option value="騒音">騒音</option>
+      <option value="たむろ">たむろ</option>
+      <option value="キャッチ">キャッチ</option>
+      <option value="ペットの糞">ペットの糞</option>
+    </select>
+
+    <button id="submitBtn" onclick="submitReport()">現在地を取得して報告する</button>
+  </div>
 
   <script>
-    // 🌟 1. LIFF IDを設定
-    liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
-        if (!liff.isLoggedIn()) {
-            liff.login(); // LINE外で開かれた場合はログインを促す
-        }
-    });
+    // 🌟 【要変更】ご自身のGASのウェブアプリURLをここに貼り付けてください
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
+    const FLOW_THRESHOLD = 0.8;
 
+    let map, heatmap;
+    let userId = 'GUEST_USER'; // 初期値（LIFFが動かないブラウザテスト用）
+
+    // 1. LIFFの初期化（画面が閉じないように設定）
+    liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
+      if (liff.isLoggedIn()) {
+        liff.getProfile().then(profile => {
+          userId = profile.userId;
+        });
+      } else {
+        liff.login();
+      }
+    }).catch(err => console.error('LIFF初期化失敗:', err));
+
+    // 2. Google Mapsの初期化とデータ読み込み
+    async function initMap() {
+      const kinshicho = { lat: 35.6966, lng: 139.8143 };
+      
+      map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 16,
+        center: kinshicho,
+        mapTypeId: 'roadmap',
+        disableDefaultUI: true,
+        zoomControl: true
+      });
+
+      await refreshMapData();
+    }
+
+    // マップのデータをGASから取得して描画する関数
+    async function refreshMapData() {
+      try {
+        const response = await fetch(GAS_URL);
+        const data = await response.json();
+        
+        // 古いヒートマップがあれば一度消去
+        if (heatmap) heatmap.setMap(null);
+
+        // ヒートマップレイヤーの作成
+        const heatmapData = data.map(point => ({
+          location: new google.maps.LatLng(point.lat, point.lng),
+          weight: point.calculatedEnergy
+        }));
+        heatmap = new google.maps.visualization.HeatmapLayer({
+          data: heatmapData,
+          map: map,
+          radius: 40,
+          opacity: 0.6
+        });
+
+        // 閾値以上のデータにピンを立てる
+        data.forEach(point => {
+          if (point.calculatedEnergy >= FLOW_THRESHOLD) {
+            createMarker(point.lat, point.lng, point.category, false); // 過去のピンはアニメーションなし
+          }
+        });
+      } catch (error) {
+        console.error('データ取得失敗:', error);
+      }
+    }
+
+    // ピン（マーカー）を作成する共通関数
+    function createMarker(lat, lng, category, isNew) {
+      const marker = new google.maps.Marker({
+        position: { lat: lat, lng: lng },
+        map: map,
+        title: category,
+        // 🌟 新しいピンの時だけ上からスッと降ってくる演出（DROP）をつける
+        animation: isNew ? google.maps.Animation.DROP : null 
+      });
+
+      const infoWindow = new google.maps.InfoWindow({
+        content: `<div style="padding:5px;"><strong>${category}</strong>（発生中）</div>`
+      });
+      marker.addListener("click", () => infoWindow.open(map, marker));
+    }
+
+    // 3. 報告ボタンが押された時の処理（有耶無耶にしない段階的演出）
     function submitReport() {
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
       btn.innerText = '位置情報を取得中...';
 
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          function(position) {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
-            const category = document.getElementById('category').value;
+      if (!navigator.geolocation) {
+        showToast('このブラウザは位置情報に対応していません。');
+        btn.disabled = false;
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const category = document.getElementById('category').value;
+          
+          btn.innerText = 'データを送信中...';
+
+          const payload = { userId: userId, category: category, lat: lat, lng: lng };
+
+          // GASへPOST送信
+          fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          })
+          .then(response => response.json())
+          .then(result => {
+            // 🌟 演出ステップ1: 無機質なポップアップを廃止し、上からフワッと通知を出す
+            showToast('報告が完了しました！');
             
-            // LINEのユーザーIDを取得
-            liff.getProfile().then(profile => {
-              const userId = profile.userId;
+            // 🌟 演出ステップ2: 画面をリロードせず、今通報したその場所に新しいピンだけをスッと降らせる
+            createMarker(lat, lng, category, true); 
+            
+            // 🌟 演出ステップ3: 地図の中心を通報した場所にスムーズに移動させる
+            map.panTo({ lat: lat, lng: lng });
 
-              // 🌟 2. 送信するデータを作成
-              const payload = {
-                userId: userId,
-                category: category,
-                lat: lat,
-                lng: lng
-              };
-
-              // 🌟 3. GASのAPI（デプロイしたURL）に向けてデータを送信
-              fetch('https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec', {
-                method: 'POST',
-                body: JSON.stringify(payload)
-              })
-              .then(response => response.json())
-              .then(result => {
-                alert(result.message);
-                liff.closeWindow(); // 成功したらLINEの画面を閉じる
-              })
-              .catch(error => {
-                alert('通信エラーが発生しました。');
-                btn.disabled = false;
-                btn.innerText = '現在地を取得して報告する';
-              });
-            }).catch(err => {
-              alert('LINEプロフィールの取得に失敗しました。');
-              btn.disabled = false;
-              btn.innerText = '現在地を取得して報告する';
-            });
-          },
-          function(error) {
-            alert('位置情報が取得できません。スマホの設定でLINEとブラウザの位置情報をONにしてください。');
+            // ボタンを元に戻す（画面は閉じない）
             btn.disabled = false;
             btn.innerText = '現在地を取得して報告する';
-          }
-        );
-      } else {
-        alert('このブラウザは位置情報に対応していません。');
-      }
+          })
+          .catch(error => {
+            showToast('通信エラーが発生しました。');
+            btn.disabled = false;
+            btn.innerText = '現在地を取得して報告する';
+          });
+        },
+        function(error) {
+          showToast('位置情報が取得できませんでした。');
+          btn.disabled = false;
+          btn.innerText = '現在地を取得して報告する';
+        }
+      );
+    }
+
+    // トースト通知を表示する関数
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.innerText = message;
+      toast.classList.add('show');
+      setTimeout(() => { toast.classList.remove('show'); }, 3000); // 3秒後に自動で隠す
     }
   </script>
+
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBMCEQHdlzcrcLI4hziAioehbIs4CRWerA&libraries=visualization&callback=initMap"></script>
 </body>
 </html>
