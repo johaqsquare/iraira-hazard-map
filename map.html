@@ -23,48 +23,69 @@
   <div id="map"></div>
 
   <script>
-    // 🌟 【要変更】フェーズ2で控えておいた「GASのウェブアプリURL」をここに貼ります
+    // 🌟 【要変更】ご自身のGASのウェブアプリURLをここに貼り付けてください
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
 
     let map, heatmap;
+    const FLOW_THRESHOLD = 0.8; // 🌟 フロー（ピン）として表示する熱量の閾値
 
-    // Google Maps APIが読み込まれたら自動的に実行される関数
     async function initMap() {
-      // 錦糸町駅付近を中心に設定
       const kinshicho = { lat: 35.6966, lng: 139.8143 };
       
-      // 地図の描画
       map = new google.maps.Map(document.getElementById('map'), {
         zoom: 16,
         center: kinshicho,
         mapTypeId: 'roadmap',
-        disableDefaultUI: true, // 余計なボタンを消してスッキリさせる
-        zoomControl: true       // ズームボタンだけ残す
+        disableDefaultUI: true,
+        zoomControl: true
       });
 
       try {
-        // バックエンド（GAS）から計算済みのデータを取得
         const response = await fetch(GAS_URL);
         const data = await response.json();
         
-        // 取得したデータをGoogle Mapsのヒートマップ用フォーマットに変換
+        // 1. ヒートマップ用のデータ（すべてのデータをモヤのベースにする）
         const heatmapData = data.map(point => {
           return {
             location: new google.maps.LatLng(point.lat, point.lng),
-            weight: point.calculatedEnergy // 数学エンジンが弾き出した「熱量（ウェイト）」
+            weight: point.calculatedEnergy
           };
         });
 
-        // ヒートマップレイヤーを作成して地図に重ねる
+        // ヒートマップの描画
         heatmap = new google.maps.visualization.HeatmapLayer({
           data: heatmapData,
           map: map,
-          radius: 35,    // モヤの広がり具合（ピクセル）
-          opacity: 0.7,  // モヤの透明度
-          // グラデーションの色も自由にカスタマイズ可能です（デフォルトは緑→赤）
+          radius: 40,
+          opacity: 0.6
         });
 
-        // 読み込み完了したら「読み込み中」表示を消す
+        // 2. ハイブリッド表示：熱量が閾値以上のデータだけ「ピン」としても重ねて表示する
+        data.forEach(point => {
+          if (point.calculatedEnergy >= FLOW_THRESHOLD) {
+            // 条件を満たす（今そこにある危機）データにピンを立てる
+            const marker = new google.maps.Marker({
+              position: { lat: point.lat, lng: point.lng },
+              map: map,
+              title: point.category,
+              animation: google.maps.Animation.DROP, // ピンが落ちてくる演出
+              icon: {
+                // ピンの色や形をカスタマイズ（標準の赤ピンよりも目立たせることも可能）
+                url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+              }
+            });
+
+            // ピンをクリックしたときに、カテゴリ（例：「ポイ捨て」）をフキダシで表示する
+            const infoWindow = new google.maps.InfoWindow({
+              content: `<div style="padding:5px;"><strong>${point.category}</strong>（発生中）</div>`
+            });
+
+            marker.addListener("click", () => {
+              infoWindow.open(map, marker);
+            });
+          }
+        });
+
         document.getElementById('loading').style.display = 'none';
         
       } catch (error) {
