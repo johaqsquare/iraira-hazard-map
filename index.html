@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -9,6 +10,7 @@
     #map { flex: 1; width: 100%; position: relative; }
     #form-container { 
       padding: 20px; background: #f8f9fa; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); box-sizing: border-box;
+      position: relative; z-index: 10;
     }
     h2 { margin: 0 0 10px 0; font-size: 18px; }
     p { margin: 0 0 15px 0; font-size: 14px; color: #666; }
@@ -16,6 +18,7 @@
     select { border: 1px solid #ccc; background: white; }
     button { background-color: #06C755; color: white; border: none; font-weight: bold; cursor: pointer; }
     button:disabled { background-color: #aaa; cursor: not-allowed; }
+    
     #toast {
       position: absolute; top: -50px; left: 50%; transform: translateX(-50%);
       background: rgba(0, 0, 0, 0.8); color: white; padding: 10px 20px;
@@ -23,12 +26,42 @@
       transition: top 0.5s ease-in-out;
     }
     #toast.show { top: 20px; }
+
+    /* 🌟 位置情報ヘルプ用のモーダル（ポップアップ）スタイル */
+    #helpModal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center;
+    }
+    #helpModal .modal-content {
+      background: white; padding: 20px; border-radius: 10px; width: 85%; max-width: 320px;
+      box-sizing: border-box;
+    }
+    #helpModal h3 { margin: 0 0 10px 0; font-size: 16px; color: #333; }
+    #helpModal p { font-size: 13px; line-height: 1.5; margin-bottom: 10px; color: #444; }
+    #helpModal .close-btn {
+      background: #ccc; color: #333; margin-top: 15px; padding: 10px;
+    }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
 
   <div id="toast"></div>
+  
+  <div id="helpModal">
+    <div class="modal-content">
+      <h3>正確な位置情報の設定方法</h3>
+      <p>ピンがずれる場合、スマホの設定で「おおよその位置情報」になっている可能性があります。以下の手順で設定を変更してください。</p>
+      <div style="background:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:10px;">
+        <p style="margin:0;"><strong>🍎 iPhoneの場合</strong><br>設定アプリ ＞ LINE（またはSafari） ＞ 位置情報 ＞ <strong>「正確な位置情報」</strong>をオンにする</p>
+      </div>
+      <div style="background:#f0f0f0; padding:10px; border-radius:5px;">
+        <p style="margin:0;"><strong>🤖 Androidの場合</strong><br>設定アプリ ＞ 位置情報 ＞ アプリの権限 ＞ LINE（またはChrome） ＞ <strong>「正確な位置情報を使用」</strong>をオンにする</p>
+      </div>
+      <button class="close-btn" onclick="document.getElementById('helpModal').style.display='none'">閉じる</button>
+    </div>
+  </div>
+
   <div id="map"></div>
 
   <div id="form-container">
@@ -42,11 +75,15 @@
       <option value="ペットの糞">ペットの糞</option>
     </select>
     <button id="submitBtn" onclick="submitReport()">現在地を取得して報告する</button>
+    
+    <div style="text-align: center; margin-top: 15px;">
+      <a href="#" onclick="document.getElementById('helpModal').style.display='flex'; return false;" style="font-size: 12px; color: #0066cc; text-decoration: underline;">📍 ピンの位置が大きくずれる場合はこちら</a>
+    </div>
   </div>
 
   <script>
     // 🌟 【要変更】ご自身のGASのウェブアプリURLをここに貼り付けてください
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
+    const GAS_URL = 'YOUR_GAS_WEB_APP_URL';
     const FLOW_THRESHOLD = 0.8;
 
     let map, heatmap;
@@ -138,6 +175,7 @@
         return;
       }
 
+      // 🌟 修正箇所：第3引数にオプション（高精度を要求）を追加
       navigator.geolocation.getCurrentPosition(
         function(position) {
           const lat = position.coords.latitude;
@@ -168,7 +206,9 @@
           showToast('位置情報が取得できませんでした。');
           btn.disabled = false;
           btn.innerText = '現在地を取得して報告する';
-        }
+        },
+        // 🌟 追加：可能な限り高精度なGPS位置情報を優先的に取得するようにブラウザに要求
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
 
