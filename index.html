@@ -5,26 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>イライラハザードマップ（錦糸町）</title>
   <style>
-    /* 画面全体のレイアウト：上半分がマップ、下半分がフォーム */
     html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; }
-    
     #map { flex: 1; width: 100%; position: relative; }
-    
     #form-container { 
-      padding: 20px; 
-      background: #f8f9fa; 
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.1); 
-      box-sizing: border-box;
+      padding: 20px; background: #f8f9fa; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); box-sizing: border-box;
     }
-    
     h2 { margin: 0 0 10px 0; font-size: 18px; }
     p { margin: 0 0 15px 0; font-size: 14px; color: #666; }
     select, button { width: 100%; padding: 12px; margin-top: 10px; font-size: 16px; border-radius: 5px; box-sizing: border-box; }
     select { border: 1px solid #ccc; background: white; }
     button { background-color: #06C755; color: white; border: none; font-weight: bold; cursor: pointer; }
-    button:disabled { background-color: #aaa; cursor: not-serif; }
-
-    /* トースト通知（画面上部にフワッと出るメッセージ） */
+    button:disabled { background-color: #aaa; cursor: not-allowed; }
     #toast {
       position: absolute; top: -50px; left: 50%; transform: translateX(-50%);
       background: rgba(0, 0, 0, 0.8); color: white; padding: 10px 20px;
@@ -38,13 +29,11 @@
 <body>
 
   <div id="toast"></div>
-
   <div id="map"></div>
 
   <div id="form-container">
     <h2>イライラ報告フォーム</h2>
     <p>現在の状況を選択して報告してください。目の前のマップに即座に反映されます。</p>
-    
     <select id="category">
       <option value="ポイ捨て">ポイ捨て</option>
       <option value="騒音">騒音</option>
@@ -52,7 +41,6 @@
       <option value="キャッチ">キャッチ</option>
       <option value="ペットの糞">ペットの糞</option>
     </select>
-
     <button id="submitBtn" onclick="submitReport()">現在地を取得して報告する</button>
   </div>
 
@@ -62,59 +50,42 @@
     const FLOW_THRESHOLD = 0.8;
 
     let map, heatmap;
-    let userId = 'GUEST_USER'; // 初期値（LIFFが動かないブラウザテスト用）
+    let userId = 'GUEST_USER';
 
-    // 1. LIFFの初期化（画面が閉じないように設定）
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
       if (liff.isLoggedIn()) {
-        liff.getProfile().then(profile => {
-          userId = profile.userId;
-        });
+        liff.getProfile().then(profile => { userId = profile.userId; });
       } else {
         liff.login();
       }
     }).catch(err => console.error('LIFF初期化失敗:', err));
 
-    // 2. Google Mapsの初期化とデータ読み込み
     async function initMap() {
       const kinshicho = { lat: 35.6966, lng: 139.8143 };
-      
       map = new google.maps.Map(document.getElementById('map'), {
-        zoom: 16,
-        center: kinshicho,
-        mapTypeId: 'roadmap',
-        disableDefaultUI: true,
-        zoomControl: true
+        zoom: 16, center: kinshicho, mapTypeId: 'roadmap', disableDefaultUI: true, zoomControl: true
       });
-
       await refreshMapData();
     }
 
-    // マップのデータをGASから取得して描画する関数
     async function refreshMapData() {
       try {
         const response = await fetch(GAS_URL);
         const data = await response.json();
         
-        // 古いヒートマップがあれば一度消去
         if (heatmap) heatmap.setMap(null);
 
-        // ヒートマップレイヤーの作成
         const heatmapData = data.map(point => ({
           location: new google.maps.LatLng(point.lat, point.lng),
           weight: point.calculatedEnergy
         }));
         heatmap = new google.maps.visualization.HeatmapLayer({
-          data: heatmapData,
-          map: map,
-          radius: 40,
-          opacity: 0.6
+          data: heatmapData, map: map, radius: 40, opacity: 0.6
         });
 
-        // 閾値以上のデータにピンを立てる
         data.forEach(point => {
           if (point.calculatedEnergy >= FLOW_THRESHOLD) {
-            createMarker(point.lat, point.lng, point.category, false); // 過去のピンはアニメーションなし
+            createMarker(point.lat, point.lng, point.category, false, point.timestamp); 
           }
         });
       } catch (error) {
@@ -122,23 +93,40 @@
       }
     }
 
-    // ピン（マーカー）を作成する共通関数
-    function createMarker(lat, lng, category, isNew) {
+    function getTimeAgo(dateString) {
+      if (!dateString) return 'たった今';
+      const now = new Date();
+      const past = new Date(dateString);
+      const diffMin = Math.floor((now - past) / (1000 * 60));
+      
+      if (diffMin < 1) return 'たった今';
+      if (diffMin < 60) return diffMin + '分前';
+      
+      const diffHour = Math.floor(diffMin / 60);
+      if (diffHour < 24) return diffHour + '時間前';
+      
+      return Math.floor(diffHour / 24) + '日前';
+    }
+
+    function createMarker(lat, lng, category, isNew, timestampStr = null) {
       const marker = new google.maps.Marker({
         position: { lat: lat, lng: lng },
         map: map,
         title: category,
-        // 🌟 新しいピンの時だけ上からスッと降ってくる演出（DROP）をつける
         animation: isNew ? google.maps.Animation.DROP : null 
       });
 
+      const timeText = isNew ? 'たった今' : getTimeAgo(timestampStr);
+
       const infoWindow = new google.maps.InfoWindow({
-        content: `<div style="padding:5px;"><strong>${category}</strong>（発生中）</div>`
+        content: `<div style="padding:5px;">
+                    <div style="font-weight:bold; font-size:14px; margin-bottom:4px;">${category}</div>
+                    <div style="color:#666; font-size:11px;">⌚ ${timeText}</div>
+                  </div>`
       });
       marker.addListener("click", () => infoWindow.open(map, marker));
     }
 
-    // 3. 報告ボタンが押された時の処理（有耶無耶にしない段階的演出）
     function submitReport() {
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
@@ -158,25 +146,15 @@
           
           btn.innerText = 'データを送信中...';
 
-          const payload = { userId: userId, category: category, lat: lat, lng: lng };
-
-          // GASへPOST送信
           fetch(GAS_URL, {
             method: 'POST',
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ userId: userId, category: category, lat: lat, lng: lng })
           })
           .then(response => response.json())
           .then(result => {
-            // 🌟 演出ステップ1: 無機質なポップアップを廃止し、上からフワッと通知を出す
             showToast('報告が完了しました！');
-            
-            // 🌟 演出ステップ2: 画面をリロードせず、今通報したその場所に新しいピンだけをスッと降らせる
             createMarker(lat, lng, category, true); 
-            
-            // 🌟 演出ステップ3: 地図の中心を通報した場所にスムーズに移動させる
             map.panTo({ lat: lat, lng: lng });
-
-            // ボタンを元に戻す（画面は閉じない）
             btn.disabled = false;
             btn.innerText = '現在地を取得して報告する';
           })
@@ -194,15 +172,13 @@
       );
     }
 
-    // トースト通知を表示する関数
     function showToast(message) {
       const toast = document.getElementById('toast');
       toast.innerText = message;
       toast.classList.add('show');
-      setTimeout(() => { toast.classList.remove('show'); }, 3000); // 3秒後に自動で隠す
+      setTimeout(() => { toast.classList.remove('show'); }, 3000);
     }
   </script>
-
   <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBMCEQHdlzcrcLI4hziAioehbIs4CRWerA&libraries=visualization&callback=initMap"></script>
 </body>
 </html>
