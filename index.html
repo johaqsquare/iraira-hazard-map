@@ -117,7 +117,6 @@
 
         data.forEach(point => {
           if (point.calculatedEnergy >= FLOW_THRESHOLD) {
-            // GAS側で作られた index と userId も一緒に渡す
             createMarker(point.lat, point.lng, point.category, false, point.timestamp, point.userId, point.index); 
           }
         });
@@ -138,7 +137,6 @@
       return Math.floor(diffHour / 24) + '日前';
     }
 
-    // 🌟 マーカー作成関数（フィードバックと削除ボタンのUIを追加）
     function createMarker(lat, lng, category, isNew, timestampStr, pointUserId, pointIndex) {
       const marker = new google.maps.Marker({
         position: { lat: lat, lng: lng },
@@ -149,7 +147,6 @@
 
       const timeText = isNew ? 'たった今' : getTimeAgo(timestampStr);
 
-      // 吹き出しの中身（HTML）を構築
       let contentHtml = `
         <div style="padding:5px; width: 160px;">
           <div style="font-weight:bold; font-size:14px; margin-bottom:4px;">${category}</div>
@@ -158,27 +155,27 @@
           <div style="border-top: 1px dashed #ccc; padding-top: 8px;">
             <div style="font-size:11px; margin-bottom:5px; font-weight:bold; color:#333;">📍 位置は正確でしたか？</div>
             <div style="display: flex; gap: 5px;">
-              <button onclick="sendFeedback(${pointIndex}, 'yes')" style="flex:1; padding:6px; background:#fff; border:1px solid #06C755; color:#06C755; border-radius:4px; font-size:12px; cursor:pointer;">はい</button>
-              <button onclick="sendFeedback(${pointIndex}, 'no')" style="flex:1; padding:6px; background:#fff; border:1px solid #ff4d4f; color:#ff4d4f; border-radius:4px; font-size:12px; cursor:pointer;">いいえ</button>
+              <button onclick="sendFeedback(${pointIndex}, 'YES')" style="flex:1; padding:6px; background:#fff; border:1px solid #06C755; color:#06C755; border-radius:4px; font-size:12px; cursor:pointer;">はい</button>
+              <button onclick="sendFeedback(${pointIndex}, 'NO')" style="flex:1; padding:6px; background:#fff; border:1px solid #ff4d4f; color:#ff4d4f; border-radius:4px; font-size:12px; cursor:pointer;">いいえ</button>
             </div>
           </div>
       `;
 
-      // もしこのピンが「自分の投稿」なら、削除ボタンを付け足す
-      if (pointUserId === userId) {
+      // 自分の投稿、またはさっき投稿したばかりの仮ピン（pointIndexが'new'）なら削除ボタンを出す
+      if (pointUserId === userId || pointIndex === 'new') {
         contentHtml += `
           <div style="margin-top: 10px;">
-            <button onclick="deletePin(${pointIndex})" style="width:100%; padding:6px; background:#f0f0f0; border:none; color:#666; border-radius:4px; font-size:11px; cursor:pointer;">🗑️ この報告を削除する</button>
+            <button onclick="deletePin(${pointIndex}, '${pointUserId}')" style="width:100%; padding:6px; background:#f0f0f0; border:none; color:#666; border-radius:4px; font-size:11px; cursor:pointer;">🗑️ この報告を削除する</button>
           </div>
         `;
       }
 
-      contentHtml += `</div>`; // divを閉じる
+      contentHtml += `</div>`;
 
       const infoWindow = new google.maps.InfoWindow({ content: contentHtml });
       
       marker.addListener("click", () => {
-        if (activeInfoWindow) activeInfoWindow.close(); // 前の吹き出しを閉じる
+        if (activeInfoWindow) activeInfoWindow.close();
         infoWindow.open(map, marker);
         activeInfoWindow = infoWindow;
       });
@@ -204,13 +201,13 @@
 
           fetch(GAS_URL, {
             method: 'POST',
-            body: JSON.stringify({ userId: userId, category: category, lat: lat, lng: lng })
+            body: JSON.stringify({ action: 'report', userId: userId, category: category, lat: lat, lng: lng })
           })
           .then(response => response.json())
           .then(result => {
             showToast('報告が完了しました！');
-            // 新規ピンの時は、自分が投稿したので pointUserId に自分の userId をセットする
-            createMarker(lat, lng, category, true, null, userId, 'new'); 
+            // 投稿直後は一度マップ全体を再読込して最新のシートインデックスを取得する
+            refreshMapData();
             map.panTo({ lat: lat, lng: lng });
             btn.disabled = false;
             btn.innerText = '現在地を取得して報告する';
@@ -230,23 +227,47 @@
       );
     }
 
-    // 🌟 フィードバックボタンが押された時の処理
+    // 🌟 修正：フィードバックを本当にGASへ送信する
     function sendFeedback(pointIndex, answer) {
-      if (activeInfoWindow) activeInfoWindow.close();
-      if (answer === 'yes') {
-        showToast('フィードバックありがとうございます！');
-      } else {
-        showToast('ズレの報告ありがとうございます。精度の改善に努めます。');
+      if (pointIndex === 'new') {
+        showToast('新しく投稿したピンは、一度画面を読み込み直してから評価してください。');
+        return;
       }
-      // TODO: 今後、GASにデータを送る処理をここに追加します
+      if (activeInfoWindow) activeInfoWindow.close();
+
+      fetch(GAS_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'feedback', index: pointIndex, answer: answer })
+      })
+      .then(() => {
+        if (answer === 'YES') {
+          showToast('フィードバックありがとうございます！');
+        } else {
+          showToast('ズレの報告ありがとうございます。');
+        }
+      })
+      .catch(() => showToast('通信エラーが発生しました。'));
     }
 
-    // 🌟 削除ボタンが押された時の処理
-    function deletePin(pointIndex) {
+    // 🌟 修正：削除リクエストを本当にGASへ送信する
+    function deletePin(pointIndex, pointUserId) {
+      if (pointIndex === 'new') {
+        showToast('新しく投稿したピンは、一度画面を読み込み直してから削除してください。');
+        return;
+      }
       if (confirm('本当にこの報告を削除しますか？')) {
         if (activeInfoWindow) activeInfoWindow.close();
-        showToast('報告を削除しました（※画面上のみのテスト）');
-        // TODO: 今後、GASにデータを送る処理をここに追加します
+
+        fetch(GAS_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'delete', index: pointIndex, userId: pointUserId })
+        })
+        .then(response => response.json())
+        .then(result => {
+          showToast('報告を削除しました。');
+          refreshMapData(); // マップを再描画してピンともやを消す
+        })
+        .catch(() => showToast('通信エラーが発生しました。'));
       }
     }
 
