@@ -77,7 +77,6 @@
   </div>
 
   <script>
-    // 🌟 【要変更】ご自身のGASのウェブアプリURLをここに貼り付けてください
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
     const FLOW_THRESHOLD = 0.8;
 
@@ -161,7 +160,6 @@
           </div>
       `;
 
-      // 自分の投稿、またはさっき投稿したばかりの仮ピン（pointIndexが'new'）なら削除ボタンを出す
       if (pointUserId === userId || pointIndex === 'new') {
         contentHtml += `
           <div style="margin-top: 10px;">
@@ -206,7 +204,6 @@
           .then(response => response.json())
           .then(result => {
             showToast('報告が完了しました！');
-            // 投稿直後は一度マップ全体を再読込して最新のシートインデックスを取得する
             refreshMapData();
             map.panTo({ lat: lat, lng: lng });
             btn.disabled = false;
@@ -227,7 +224,6 @@
       );
     }
 
-    // 🌟 修正：フィードバックを本当にGASへ送信する
     function sendFeedback(pointIndex, answer) {
       if (pointIndex === 'new') {
         showToast('新しく投稿したピンは、一度画面を読み込み直してから評価してください。');
@@ -249,7 +245,6 @@
       .catch(() => showToast('通信エラーが発生しました。'));
     }
 
-    // 🌟 修正：削除リクエストを本当にGASへ送信する
     function deletePin(pointIndex, pointUserId) {
       if (pointIndex === 'new') {
         showToast('新しく投稿したピンは、一度画面を読み込み直してから削除してください。');
@@ -265,7 +260,7 @@
         .then(response => response.json())
         .then(result => {
           showToast('報告を削除しました。');
-          refreshMapData(); // マップを再描画してピンともやを消す
+          refreshMapData();
         })
         .catch(() => showToast('通信エラーが発生しました。'));
       }
