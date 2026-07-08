@@ -77,6 +77,7 @@
   </div>
 
   <script>
+    // ぱさんのGASのURLをセット済みです
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
     const FLOW_THRESHOLD = 0.8;
 
@@ -101,7 +102,8 @@
 
     async function refreshMapData() {
       try {
-        const response = await fetch(GAS_URL);
+        // 🌟 修正：ブラウザのキャッシュ（サボり）を強制的に防ぐために、URLの末尾に現在時刻をつける
+        const response = await fetch(GAS_URL + "?t=" + new Date().getTime());
         const data = await response.json();
         
         if (heatmap) heatmap.setMap(null);
@@ -154,8 +156,8 @@
           <div style="border-top: 1px dashed #ccc; padding-top: 8px;">
             <div style="font-size:11px; margin-bottom:5px; font-weight:bold; color:#333;">📍 位置は正確でしたか？</div>
             <div style="display: flex; gap: 5px;">
-              <button onclick="sendFeedback(${pointIndex}, 'YES')" style="flex:1; padding:6px; background:#fff; border:1px solid #06C755; color:#06C755; border-radius:4px; font-size:12px; cursor:pointer;">はい</button>
-              <button onclick="sendFeedback(${pointIndex}, 'NO')" style="flex:1; padding:6px; background:#fff; border:1px solid #ff4d4f; color:#ff4d4f; border-radius:4px; font-size:12px; cursor:pointer;">いいえ</button>
+              <button onclick="sendFeedback('${pointIndex}', 'YES')" style="flex:1; padding:6px; background:#fff; border:1px solid #06C755; color:#06C755; border-radius:4px; font-size:12px; cursor:pointer;">はい</button>
+              <button onclick="sendFeedback('${pointIndex}', 'NO')" style="flex:1; padding:6px; background:#fff; border:1px solid #ff4d4f; color:#ff4d4f; border-radius:4px; font-size:12px; cursor:pointer;">いいえ</button>
             </div>
           </div>
       `;
@@ -163,7 +165,7 @@
       if (pointUserId === userId || pointIndex === 'new') {
         contentHtml += `
           <div style="margin-top: 10px;">
-            <button onclick="deletePin(${pointIndex}, '${pointUserId}')" style="width:100%; padding:6px; background:#f0f0f0; border:none; color:#666; border-radius:4px; font-size:11px; cursor:pointer;">🗑️ この報告を削除する</button>
+            <button onclick="deletePin('${pointIndex}', '${pointUserId}')" style="width:100%; padding:6px; background:#f0f0f0; border:none; color:#666; border-radius:4px; font-size:11px; cursor:pointer;">🗑️ この報告を削除する</button>
           </div>
         `;
       }
@@ -204,8 +206,14 @@
           .then(response => response.json())
           .then(result => {
             showToast('報告が完了しました！');
-            refreshMapData();
+            
+            // 🌟 修正：送信直後に、即座に画面へ新しいピンを落とす（即時フィードバックの復活）
+            createMarker(lat, lng, category, true, new Date().toISOString(), userId, 'new');
             map.panTo({ lat: lat, lng: lng });
+
+            // 念のため2秒後に最新のデータを裏側から静かに取得して、本物のピン（行番号つき）にすり替える
+            setTimeout(refreshMapData, 2000);
+            
             btn.disabled = false;
             btn.innerText = '現在地を取得して報告する';
           })
