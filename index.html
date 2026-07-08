@@ -77,11 +77,11 @@
   </div>
 
   <script>
-    // ぱさんのGASのURLをセット済みです
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
     const FLOW_THRESHOLD = 0.8;
 
     let map, heatmap, activeInfoWindow;
+    let markers = []; // 🌟 追加：地図上のピンを管理する箱
     let userId = 'GUEST_USER';
 
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
@@ -102,11 +102,13 @@
 
     async function refreshMapData() {
       try {
-        // 🌟 修正：ブラウザのキャッシュ（サボり）を強制的に防ぐために、URLの末尾に現在時刻をつける
         const response = await fetch(GAS_URL + "?t=" + new Date().getTime());
         const data = await response.json();
         
+        // 🌟 追加：新しいデータを描画する前に、地図上の「古いピンとモヤ」を一旦すべて消す
         if (heatmap) heatmap.setMap(null);
+        markers.forEach(m => m.setMap(null));
+        markers = []; 
 
         const heatmapData = data.map(point => ({
           location: new google.maps.LatLng(point.lat, point.lng),
@@ -145,6 +147,8 @@
         title: category,
         animation: isNew ? google.maps.Animation.DROP : null 
       });
+      
+      markers.push(marker); // 🌟 追加：お掃除できるようにピンを箱にしまっておく
 
       const timeText = isNew ? 'たった今' : getTimeAgo(timestampStr);
 
@@ -207,11 +211,9 @@
           .then(result => {
             showToast('報告が完了しました！');
             
-            // 🌟 修正：送信直後に、即座に画面へ新しいピンを落とす（即時フィードバックの復活）
             createMarker(lat, lng, category, true, new Date().toISOString(), userId, 'new');
             map.panTo({ lat: lat, lng: lng });
 
-            // 念のため2秒後に最新のデータを裏側から静かに取得して、本物のピン（行番号つき）にすり替える
             setTimeout(refreshMapData, 2000);
             
             btn.disabled = false;
@@ -234,7 +236,7 @@
 
     function sendFeedback(pointIndex, answer) {
       if (pointIndex === 'new') {
-        showToast('新しく投稿したピンは、一度画面を読み込み直してから評価してください。');
+        showToast('データの同期中です。少し待ってからもう一度お試しください。');
         return;
       }
       if (activeInfoWindow) activeInfoWindow.close();
@@ -255,7 +257,7 @@
 
     function deletePin(pointIndex, pointUserId) {
       if (pointIndex === 'new') {
-        showToast('新しく投稿したピンは、一度画面を読み込み直してから削除してください。');
+        showToast('データの同期中です。少し待ってからもう一度お試しください。');
         return;
       }
       if (confirm('本当にこの報告を削除しますか？')) {
