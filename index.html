@@ -6,7 +6,11 @@
   <title>イライラハザードマップ（錦糸町）</title>
   <style>
     html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; }
-    #map { flex: 1; width: 100%; position: relative; }
+    
+    /* マップとボタンを包むコンテナ */
+    #map-container { flex: 1; width: 100%; position: relative; }
+    #map { height: 100%; width: 100%; }
+
     #form-container { 
       padding: 20px; background: #f8f9fa; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); box-sizing: border-box;
       position: relative; z-index: 10;
@@ -37,15 +41,15 @@
     #helpModal p { font-size: 13px; line-height: 1.5; margin-bottom: 10px; color: #444; }
     #helpModal .close-btn { background: #ccc; color: #333; margin-top: 15px; padding: 10px; }
 
-    /* 🌟 新機能：モード切り替えボタンのスタイル */
+    /* モード切り替えボタン（地図の上に絶対に重なるように配置） */
     #view-toggle {
       position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
       display: flex; background: white; border-radius: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       overflow: hidden; z-index: 100;
     }
     .toggle-btn {
-      border: none; background: white; padding: 10px 15px; font-size: 13px; cursor: pointer; color: #666;
-      outline: none; margin: 0; width: 100px; transition: 0.2s;
+      border: none; background: white; padding: 10px 12px; font-size: 12px; cursor: pointer; color: #666;
+      outline: none; margin: 0; width: 95px; transition: 0.2s; white-space: nowrap;
     }
     .toggle-btn.active { background: #06C755; color: white; font-weight: bold; }
     .toggle-btn:not(:last-child) { border-right: 1px solid #eee; }
@@ -70,7 +74,8 @@
     </div>
   </div>
 
-  <div id="map">
+  <div id="map-container">
+    <div id="map"></div>
     <div id="view-toggle">
       <button id="btn-recent" class="toggle-btn active" onclick="switchMode('recent')">直近1時間</button>
       <button id="btn-mine" class="toggle-btn" onclick="switchMode('mine')">自分の報告</button>
@@ -97,12 +102,13 @@
 
   <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
-    
+    const FLOW_THRESHOLD = 0.8;
+
     let map, heatmap, activeInfoWindow;
-    let markerList = []; // 🌟修正：ピンとその裏データを一緒に管理するリスト
+    let markerList = []; 
     let knownPinIndexes = new Set();
     let userId = 'GUEST_USER';
-    let currentMode = 'recent'; // 🌟現在のモード状態（初期値は直近1時間）
+    let currentMode = 'recent'; 
 
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
       if (liff.isLoggedIn()) {
@@ -120,35 +126,28 @@
       await refreshMapData();
     }
 
-    // 🌟 モード切り替えボタンが押された時の処理
     function switchMode(mode) {
       currentMode = mode;
       document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
       document.getElementById('btn-' + mode).classList.add('active');
       if (activeInfoWindow) activeInfoWindow.close();
-      applyView(); // 画面の表示状態を更新
+      applyView(); 
     }
 
-    // 🌟 現在のモードに合わせて、ピンやモヤの表示/非表示を切り替える
     function applyView() {
-      // モヤモードならヒートマップを表示、それ以外は隠す
       if (heatmap) {
         heatmap.setMap(currentMode === 'moya' ? map : null);
       }
 
-      // ピンの出し分けロジック
       const now = new Date();
       markerList.forEach(item => {
         let shouldShow = false;
         if (currentMode === 'recent') {
-          // 直近1時間以内なら表示
           const diffMin = (now - new Date(item.data.timestamp)) / (1000 * 60);
           if (diffMin <= 60) shouldShow = true;
         } else if (currentMode === 'mine') {
-          // 自分の投稿なら表示
           if (item.data.userId === userId) shouldShow = true;
         }
-        // 条件に合致したピンだけを地図に出す
         item.marker.setMap(shouldShow ? map : null);
       });
     }
@@ -162,7 +161,6 @@
         markerList.forEach(m => m.marker.setMap(null));
         markerList = []; 
 
-        // 数学エンジンが弾き出した熱量(calculatedEnergy)をモヤの濃さに設定
         const heatmapData = data.map(point => ({
           location: new google.maps.LatLng(point.lat, point.lng),
           weight: point.calculatedEnergy
@@ -171,14 +169,14 @@
           data: heatmapData, radius: 40, opacity: 0.6
         });
 
-        // データを元にすべてのピンを裏側で作成する
         data.forEach(point => {
-          const isNew = !knownPinIndexes.has(point.index);
-          knownPinIndexes.add(point.index);
-          createMarkerObj(point, isNew);
+          if (point.calculatedEnergy >= FLOW_THRESHOLD) {
+            const isNew = !knownPinIndexes.has(point.index);
+            knownPinIndexes.add(point.index);
+            createMarkerObj(point, isNew);
+          }
         });
 
-        // 現在のモードに合わせて画面を更新
         applyView();
 
       } catch (error) {
@@ -198,7 +196,6 @@
       return Math.floor(diffHour / 24) + '日前';
     }
 
-    // 🌟 ピンを作成してリストに保存する関数（表示するかどうかは applyView に任せる）
     function createMarkerObj(point, isNew) {
       const marker = new google.maps.Marker({
         position: { lat: point.lat, lng: point.lng },
@@ -240,7 +237,6 @@
         activeInfoWindow = infoWindow;
       });
 
-      // マーカー本体とデータをセットにしてリストに格納
       markerList.push({ marker: marker, data: point });
     }
 
@@ -262,20 +258,16 @@
           const category = document.getElementById('category').value;
           btn.innerText = 'データを送信中...';
 
-          fetch(GAS_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'report', userId: userId, category: category, lat: lat, lng: lng })
-          })
+          // 🌟 修正：CORSエラーを防ぐため、確実なGETパラメータ通信に変更
+          const reportUrl = `${GAS_URL}?action=report&userId=${encodeURIComponent(userId)}&category=${encodeURIComponent(category)}&lat=${lat}&lng=${lng}`;
+
+          fetch(reportUrl)
           .then(response => response.json())
           .then(async result => {
             showToast('報告が完了しました！');
-            
-            // 🌟 自動的に「直近1時間」モードに切り替えて、自分が落としたピンを見せる
             switchMode('recent'); 
-            
             await refreshMapData(); 
             map.panTo({ lat: lat, lng: lng });
-
             btn.disabled = false;
             btn.innerText = '現在地を取得して報告する';
           })
@@ -296,10 +288,11 @@
 
     function sendFeedback(pointIndex, answer) {
       if (activeInfoWindow) activeInfoWindow.close();
-      fetch(GAS_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'feedback', index: pointIndex, answer: answer })
-      })
+      
+      // 🌟 修正：GETパラメータ通信に変更
+      const feedbackUrl = `${GAS_URL}?action=feedback&index=${pointIndex}&answer=${answer}`;
+
+      fetch(feedbackUrl)
       .then(() => {
         if (answer === 'YES') {
           showToast('フィードバックありがとうございます！');
@@ -313,10 +306,11 @@
     function deletePin(pointIndex, pointUserId) {
       if (confirm('本当にこの報告を削除しますか？')) {
         if (activeInfoWindow) activeInfoWindow.close();
-        fetch(GAS_URL, {
-          method: 'POST',
-          body: JSON.stringify({ action: 'delete', index: pointIndex, userId: pointUserId })
-        })
+
+        // 🌟 修正：GETパラメータ通信に変更
+        const deleteUrl = `${GAS_URL}?action=delete&index=${pointIndex}&userId=${encodeURIComponent(pointUserId)}`;
+
+        fetch(deleteUrl)
         .then(response => response.json())
         .then(result => {
           showToast('報告を削除しました。');
