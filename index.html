@@ -5,14 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>イライラハザードマップ（錦糸町）</title>
   <style>
-    html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; }
+    html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; background: #f0f0f0;}
     
-    /* マップとボタンを包むコンテナ */
+    /* 🌟 絶対に消えない・隠れないメニューバー */
+    #menu-bar {
+      background: white; padding: 12px 10px; display: flex; justify-content: center; gap: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 2000;
+    }
+    .toggle-btn {
+      flex: 1; border: 1px solid #ddd; background: white; padding: 10px 5px; font-size: 13px; 
+      cursor: pointer; color: #666; border-radius: 5px; font-weight: bold; transition: 0.2s;
+    }
+    .toggle-btn.active { background: #06C755; color: white; border-color: #06C755; }
+    
     #map-container { flex: 1; width: 100%; position: relative; }
     #map { height: 100%; width: 100%; }
 
     #form-container { 
-      padding: 20px; background: #f8f9fa; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); box-sizing: border-box;
+      padding: 20px; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); box-sizing: border-box;
       position: relative; z-index: 10;
     }
     h2 { margin: 0 0 10px 0; font-size: 18px; }
@@ -25,34 +35,21 @@
     #toast {
       position: absolute; top: -50px; left: 50%; transform: translateX(-50%);
       background: rgba(0, 0, 0, 0.9); color: white; padding: 10px 20px;
-      border-radius: 20px; font-size: 14px; z-index: 1000;
+      border-radius: 20px; font-size: 14px; z-index: 3000;
       transition: top 0.5s ease-in-out;
     }
     #toast.show { top: 20px; }
 
     #helpModal {
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.6); z-index: 4000; align-items: center; justify-content: center;
     }
     #helpModal .modal-content {
       background: white; padding: 20px; border-radius: 10px; width: 85%; max-width: 320px; box-sizing: border-box;
     }
     #helpModal h3 { margin: 0 0 10px 0; font-size: 16px; color: #333; }
     #helpModal p { font-size: 13px; line-height: 1.5; margin-bottom: 10px; color: #444; }
-    #helpModal .close-btn { background: #ccc; color: #333; margin-top: 15px; padding: 10px; }
-
-    /* モード切り替えボタン（地図の上に絶対に重なるように配置） */
-    #view-toggle {
-      position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
-      display: flex; background: white; border-radius: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      overflow: hidden; z-index: 100;
-    }
-    .toggle-btn {
-      border: none; background: white; padding: 10px 12px; font-size: 12px; cursor: pointer; color: #666;
-      outline: none; margin: 0; width: 95px; transition: 0.2s; white-space: nowrap;
-    }
-    .toggle-btn.active { background: #06C755; color: white; font-weight: bold; }
-    .toggle-btn:not(:last-child) { border-right: 1px solid #eee; }
+    #helpModal .close-btn { background: #ccc; color: #333; margin-top: 15px; padding: 10px; width: 100%; }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -74,18 +71,19 @@
     </div>
   </div>
 
+  <div id="menu-bar">
+    <button id="btn-recent" class="toggle-btn active" onclick="switchMode('recent')">直近1時間</button>
+    <button id="btn-mine" class="toggle-btn" onclick="switchMode('mine')">自分の報告</button>
+    <button id="btn-moya" class="toggle-btn" onclick="switchMode('moya')">モヤ(熱源)</button>
+  </div>
+
   <div id="map-container">
     <div id="map"></div>
-    <div id="view-toggle">
-      <button id="btn-recent" class="toggle-btn active" onclick="switchMode('recent')">直近1時間</button>
-      <button id="btn-mine" class="toggle-btn" onclick="switchMode('mine')">自分の報告</button>
-      <button id="btn-moya" class="toggle-btn" onclick="switchMode('moya')">モヤ(熱源)</button>
-    </div>
   </div>
 
   <div id="form-container">
     <h2>イライラ報告フォーム</h2>
-    <p>現在の状況を選択して報告してください。目の前のマップに即座に反映されます。</p>
+    <p>現在の状況を選択して報告してください。</p>
     <select id="category">
       <option value="ポイ捨て">ポイ捨て</option>
       <option value="騒音">騒音</option>
@@ -102,7 +100,6 @@
 
   <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
-    const FLOW_THRESHOLD = 0.8;
 
     let map, heatmap, activeInfoWindow;
     let markerList = []; 
@@ -135,6 +132,7 @@
     }
 
     function applyView() {
+      // モヤモードならヒートマップを表示、それ以外は隠す
       if (heatmap) {
         heatmap.setMap(currentMode === 'moya' ? map : null);
       }
@@ -143,6 +141,7 @@
       markerList.forEach(item => {
         let shouldShow = false;
         if (currentMode === 'recent') {
+          // 🌟 修正：「熱量」関係なく、純粋に直近1時間以内のピンをすべて表示
           const diffMin = (now - new Date(item.data.timestamp)) / (1000 * 60);
           if (diffMin <= 60) shouldShow = true;
         } else if (currentMode === 'mine') {
@@ -169,15 +168,20 @@
           data: heatmapData, radius: 40, opacity: 0.6
         });
 
+        const now = new Date();
         data.forEach(point => {
-          if (point.calculatedEnergy >= FLOW_THRESHOLD) {
+          const diffMin = (now - new Date(point.timestamp)) / (1000 * 60);
+          const isMine = point.userId === userId;
+          
+          // 1時間以内のデータ、または自分のデータなら裏側でピンを作っておく
+          if (diffMin <= 60 || isMine) {
             const isNew = !knownPinIndexes.has(point.index);
             knownPinIndexes.add(point.index);
             createMarkerObj(point, isNew);
           }
         });
 
-        applyView();
+        applyView(); // 現在のモードに合わせて画面に反映
 
       } catch (error) {
         console.error('データ取得失敗:', error);
@@ -228,7 +232,6 @@
       }
 
       contentHtml += `</div>`;
-
       const infoWindow = new google.maps.InfoWindow({ content: contentHtml });
       
       marker.addListener("click", () => {
@@ -240,6 +243,7 @@
       markerList.push({ marker: marker, data: point });
     }
 
+    // 🌟 修正：最も安定していたPOST通信に再統一（エラー回避）
     function submitReport() {
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
@@ -247,8 +251,7 @@
 
       if (!navigator.geolocation) {
         showToast('このブラウザは位置情報に対応していません。');
-        btn.disabled = false;
-        return;
+        btn.disabled = false; return;
       }
 
       navigator.geolocation.getCurrentPosition(
@@ -258,14 +261,15 @@
           const category = document.getElementById('category').value;
           btn.innerText = 'データを送信中...';
 
-          // 🌟 修正：CORSエラーを防ぐため、確実なGETパラメータ通信に変更
-          const reportUrl = `${GAS_URL}?action=report&userId=${encodeURIComponent(userId)}&category=${encodeURIComponent(category)}&lat=${lat}&lng=${lng}`;
-
-          fetch(reportUrl)
+          fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ action: 'report', userId: userId, category: category, lat: lat, lng: lng })
+          })
           .then(response => response.json())
           .then(async result => {
             showToast('報告が完了しました！');
-            switchMode('recent'); 
+            switchMode('recent'); // 強制的に直近モードにして自分のピンを見せる
             await refreshMapData(); 
             map.panTo({ lat: lat, lng: lng });
             btn.disabled = false;
@@ -288,35 +292,29 @@
 
     function sendFeedback(pointIndex, answer) {
       if (activeInfoWindow) activeInfoWindow.close();
-      
-      // 🌟 修正：GETパラメータ通信に変更
-      const feedbackUrl = `${GAS_URL}?action=feedback&index=${pointIndex}&answer=${answer}`;
-
-      fetch(feedbackUrl)
-      .then(() => {
-        if (answer === 'YES') {
-          showToast('フィードバックありがとうございます！');
-        } else {
-          showToast('ズレの報告ありがとうございます。');
-        }
+      fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'feedback', index: pointIndex, answer: answer })
       })
-      .catch(() => showToast('通信エラーが発生しました。'));
+      .then(() => {
+        showToast(answer === 'YES' ? 'フィードバックありがとうございます！' : 'ズレの報告ありがとうございます。');
+      }).catch(() => showToast('通信エラーが発生しました。'));
     }
 
     function deletePin(pointIndex, pointUserId) {
       if (confirm('本当にこの報告を削除しますか？')) {
         if (activeInfoWindow) activeInfoWindow.close();
-
-        // 🌟 修正：GETパラメータ通信に変更
-        const deleteUrl = `${GAS_URL}?action=delete&index=${pointIndex}&userId=${encodeURIComponent(pointUserId)}`;
-
-        fetch(deleteUrl)
+        fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ action: 'delete', index: pointIndex, userId: pointUserId })
+        })
         .then(response => response.json())
         .then(result => {
           showToast('報告を削除しました。');
           refreshMapData(); 
-        })
-        .catch(() => showToast('通信エラーが発生しました。'));
+        }).catch(() => showToast('通信エラーが発生しました。'));
       }
     }
 
