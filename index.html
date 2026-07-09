@@ -36,6 +36,19 @@
     #helpModal h3 { margin: 0 0 10px 0; font-size: 16px; color: #333; }
     #helpModal p { font-size: 13px; line-height: 1.5; margin-bottom: 10px; color: #444; }
     #helpModal .close-btn { background: #ccc; color: #333; margin-top: 15px; padding: 10px; }
+
+    /* 🌟 新機能：モード切り替えボタンのスタイル */
+    #view-toggle {
+      position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+      display: flex; background: white; border-radius: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      overflow: hidden; z-index: 100;
+    }
+    .toggle-btn {
+      border: none; background: white; padding: 10px 15px; font-size: 13px; cursor: pointer; color: #666;
+      outline: none; margin: 0; width: 100px; transition: 0.2s;
+    }
+    .toggle-btn.active { background: #06C755; color: white; font-weight: bold; }
+    .toggle-btn:not(:last-child) { border-right: 1px solid #eee; }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -57,7 +70,13 @@
     </div>
   </div>
 
-  <div id="map"></div>
+  <div id="map">
+    <div id="view-toggle">
+      <button id="btn-recent" class="toggle-btn active" onclick="switchMode('recent')">直近1時間</button>
+      <button id="btn-mine" class="toggle-btn" onclick="switchMode('mine')">自分の報告</button>
+      <button id="btn-moya" class="toggle-btn" onclick="switchMode('moya')">モヤ(熱源)</button>
+    </div>
+  </div>
 
   <div id="form-container">
     <h2>イライラ報告フォーム</h2>
@@ -78,11 +97,12 @@
 
   <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
-    const FLOW_THRESHOLD = 0.8;
-
+    
     let map, heatmap, activeInfoWindow;
-    let markers = []; // 🌟 追加：地図上のピンを管理する箱
+    let markerList = []; // 🌟修正：ピンとその裏データを一緒に管理するリスト
+    let knownPinIndexes = new Set();
     let userId = 'GUEST_USER';
+    let currentMode = 'recent'; // 🌟現在のモード状態（初期値は直近1時間）
 
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
       if (liff.isLoggedIn()) {
@@ -100,29 +120,67 @@
       await refreshMapData();
     }
 
+    // 🌟 モード切り替えボタンが押された時の処理
+    function switchMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById('btn-' + mode).classList.add('active');
+      if (activeInfoWindow) activeInfoWindow.close();
+      applyView(); // 画面の表示状態を更新
+    }
+
+    // 🌟 現在のモードに合わせて、ピンやモヤの表示/非表示を切り替える
+    function applyView() {
+      // モヤモードならヒートマップを表示、それ以外は隠す
+      if (heatmap) {
+        heatmap.setMap(currentMode === 'moya' ? map : null);
+      }
+
+      // ピンの出し分けロジック
+      const now = new Date();
+      markerList.forEach(item => {
+        let shouldShow = false;
+        if (currentMode === 'recent') {
+          // 直近1時間以内なら表示
+          const diffMin = (now - new Date(item.data.timestamp)) / (1000 * 60);
+          if (diffMin <= 60) shouldShow = true;
+        } else if (currentMode === 'mine') {
+          // 自分の投稿なら表示
+          if (item.data.userId === userId) shouldShow = true;
+        }
+        // 条件に合致したピンだけを地図に出す
+        item.marker.setMap(shouldShow ? map : null);
+      });
+    }
+
     async function refreshMapData() {
       try {
         const response = await fetch(GAS_URL + "?t=" + new Date().getTime());
         const data = await response.json();
         
-        // 🌟 追加：新しいデータを描画する前に、地図上の「古いピンとモヤ」を一旦すべて消す
         if (heatmap) heatmap.setMap(null);
-        markers.forEach(m => m.setMap(null));
-        markers = []; 
+        markerList.forEach(m => m.marker.setMap(null));
+        markerList = []; 
 
+        // 数学エンジンが弾き出した熱量(calculatedEnergy)をモヤの濃さに設定
         const heatmapData = data.map(point => ({
           location: new google.maps.LatLng(point.lat, point.lng),
           weight: point.calculatedEnergy
         }));
         heatmap = new google.maps.visualization.HeatmapLayer({
-          data: heatmapData, map: map, radius: 40, opacity: 0.6
+          data: heatmapData, radius: 40, opacity: 0.6
         });
 
+        // データを元にすべてのピンを裏側で作成する
         data.forEach(point => {
-          if (point.calculatedEnergy >= FLOW_THRESHOLD) {
-            createMarker(point.lat, point.lng, point.category, false, point.timestamp, point.userId, point.index); 
-          }
+          const isNew = !knownPinIndexes.has(point.index);
+          knownPinIndexes.add(point.index);
+          createMarkerObj(point, isNew);
         });
+
+        // 現在のモードに合わせて画面を更新
+        applyView();
+
       } catch (error) {
         console.error('データ取得失敗:', error);
       }
@@ -140,36 +198,34 @@
       return Math.floor(diffHour / 24) + '日前';
     }
 
-    function createMarker(lat, lng, category, isNew, timestampStr, pointUserId, pointIndex) {
+    // 🌟 ピンを作成してリストに保存する関数（表示するかどうかは applyView に任せる）
+    function createMarkerObj(point, isNew) {
       const marker = new google.maps.Marker({
-        position: { lat: lat, lng: lng },
-        map: map,
-        title: category,
+        position: { lat: point.lat, lng: point.lng },
+        title: point.category,
         animation: isNew ? google.maps.Animation.DROP : null 
       });
       
-      markers.push(marker); // 🌟 追加：お掃除できるようにピンを箱にしまっておく
-
-      const timeText = isNew ? 'たった今' : getTimeAgo(timestampStr);
+      const timeText = isNew ? 'たった今' : getTimeAgo(point.timestamp);
 
       let contentHtml = `
         <div style="padding:5px; width: 160px;">
-          <div style="font-weight:bold; font-size:14px; margin-bottom:4px;">${category}</div>
+          <div style="font-weight:bold; font-size:14px; margin-bottom:4px;">${point.category}</div>
           <div style="color:#666; font-size:11px; margin-bottom:10px;">⌚ ${timeText}</div>
           
           <div style="border-top: 1px dashed #ccc; padding-top: 8px;">
             <div style="font-size:11px; margin-bottom:5px; font-weight:bold; color:#333;">📍 位置は正確でしたか？</div>
             <div style="display: flex; gap: 5px;">
-              <button onclick="sendFeedback('${pointIndex}', 'YES')" style="flex:1; padding:6px; background:#fff; border:1px solid #06C755; color:#06C755; border-radius:4px; font-size:12px; cursor:pointer;">はい</button>
-              <button onclick="sendFeedback('${pointIndex}', 'NO')" style="flex:1; padding:6px; background:#fff; border:1px solid #ff4d4f; color:#ff4d4f; border-radius:4px; font-size:12px; cursor:pointer;">いいえ</button>
+              <button onclick="sendFeedback(${point.index}, 'YES')" style="flex:1; padding:6px; background:#fff; border:1px solid #06C755; color:#06C755; border-radius:4px; font-size:12px; cursor:pointer;">はい</button>
+              <button onclick="sendFeedback(${point.index}, 'NO')" style="flex:1; padding:6px; background:#fff; border:1px solid #ff4d4f; color:#ff4d4f; border-radius:4px; font-size:12px; cursor:pointer;">いいえ</button>
             </div>
           </div>
       `;
 
-      if (pointUserId === userId || pointIndex === 'new') {
+      if (point.userId === userId) {
         contentHtml += `
           <div style="margin-top: 10px;">
-            <button onclick="deletePin('${pointIndex}', '${pointUserId}')" style="width:100%; padding:6px; background:#f0f0f0; border:none; color:#666; border-radius:4px; font-size:11px; cursor:pointer;">🗑️ この報告を削除する</button>
+            <button onclick="deletePin(${point.index}, '${point.userId}')" style="width:100%; padding:6px; background:#f0f0f0; border:none; color:#666; border-radius:4px; font-size:11px; cursor:pointer;">🗑️ この報告を削除する</button>
           </div>
         `;
       }
@@ -183,6 +239,9 @@
         infoWindow.open(map, marker);
         activeInfoWindow = infoWindow;
       });
+
+      // マーカー本体とデータをセットにしてリストに格納
+      markerList.push({ marker: marker, data: point });
     }
 
     function submitReport() {
@@ -208,14 +267,15 @@
             body: JSON.stringify({ action: 'report', userId: userId, category: category, lat: lat, lng: lng })
           })
           .then(response => response.json())
-          .then(result => {
+          .then(async result => {
             showToast('報告が完了しました！');
             
-            createMarker(lat, lng, category, true, new Date().toISOString(), userId, 'new');
+            // 🌟 自動的に「直近1時間」モードに切り替えて、自分が落としたピンを見せる
+            switchMode('recent'); 
+            
+            await refreshMapData(); 
             map.panTo({ lat: lat, lng: lng });
 
-            setTimeout(refreshMapData, 2000);
-            
             btn.disabled = false;
             btn.innerText = '現在地を取得して報告する';
           })
@@ -235,12 +295,7 @@
     }
 
     function sendFeedback(pointIndex, answer) {
-      if (pointIndex === 'new') {
-        showToast('データの同期中です。少し待ってからもう一度お試しください。');
-        return;
-      }
       if (activeInfoWindow) activeInfoWindow.close();
-
       fetch(GAS_URL, {
         method: 'POST',
         body: JSON.stringify({ action: 'feedback', index: pointIndex, answer: answer })
@@ -256,13 +311,8 @@
     }
 
     function deletePin(pointIndex, pointUserId) {
-      if (pointIndex === 'new') {
-        showToast('データの同期中です。少し待ってからもう一度お試しください。');
-        return;
-      }
       if (confirm('本当にこの報告を削除しますか？')) {
         if (activeInfoWindow) activeInfoWindow.close();
-
         fetch(GAS_URL, {
           method: 'POST',
           body: JSON.stringify({ action: 'delete', index: pointIndex, userId: pointUserId })
@@ -270,7 +320,7 @@
         .then(response => response.json())
         .then(result => {
           showToast('報告を削除しました。');
-          refreshMapData();
+          refreshMapData(); 
         })
         .catch(() => showToast('通信エラーが発生しました。'));
       }
