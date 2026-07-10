@@ -156,11 +156,18 @@
         const response = await fetch(GAS_URL + "?t=" + new Date().getTime());
         const text = await response.text();
         const data = JSON.parse(text);
-        
+    
+        // 🌟追加: サーバー側でエラーが起きた場合、その内容をそのまま表示する
+        if (data.error) {
+          console.error('サーバーエラー:', data.error);
+          showToast('サーバーエラー: ' + data.error);
+          return;
+        }
+    
         if (heatmap) heatmap.setMap(null);
         markerList.forEach(m => m.marker.setMap(null));
-        markerList = []; 
-
+        markerList = [];
+    
         const heatmapData = data.map(point => ({
           location: new google.maps.LatLng(point.lat, point.lng),
           weight: point.calculatedEnergy
@@ -168,22 +175,21 @@
         heatmap = new google.maps.visualization.HeatmapLayer({
           data: heatmapData, radius: 40, opacity: 0.6
         });
-
+    
         const now = new Date();
         data.forEach(point => {
           const diffMin = Math.abs(now - new Date(point.timestamp)) / (1000 * 60);
           const isMine = point.userId === userId;
-          
-          // 1時間以内のデータ、または自分のデータなら裏側でピンを作っておく
+    
           if (diffMin <= 60 || isMine) {
             const isNew = !knownPinIndexes.has(point.index);
             knownPinIndexes.add(point.index);
             createMarkerObj(point, isNew);
           }
         });
-
-        applyView(); 
-
+    
+        applyView();
+    
       } catch (error) {
         console.error('データ取得エラー:', error);
         showToast('地図データの読み込みに失敗しました。');
@@ -284,11 +290,17 @@
             btn.innerText = '現在地を取得して報告する';
           });
         },
-        function(error) {
-          showToast('位置情報が取得できませんでした。');
-          btn.disabled = false;
-          btn.innerText = '現在地を取得して報告する';
-        },
+function(error) {
+  // 🌟追加: 位置情報が「拒否」された場合(code===1)、設定手順のモーダルを自動表示する
+  if (error.code === 1) {
+    document.getElementById('helpModal').style.display = 'flex';
+    showToast('位置情報の許可が必要です。');
+  } else {
+    showToast('位置情報が取得できませんでした。');
+  }
+  btn.disabled = false;
+  btn.innerText = '現在地を取得して報告する';
+},
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
