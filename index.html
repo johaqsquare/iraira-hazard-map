@@ -1,3 +1,321 @@
+
+Claudeが応答を完了しました
+
+<!DOCTYPE html> <html lang="ja"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>イライラハザードマップ（錦糸町）</title> <style> html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: c
+
+pasted
+
+Androidです。LINEのキャッシュを削除したがだめでした
+これまで、Geminiがつくっていた内容では位置情報を聞いてきちんとできましたよ。
+HTTPSです。
+
+index.htmlを改めて送るので見てください。
+
+
+LINE WebViewの位置情報エラーを診断し、解決策を検討した。
+LINE WebViewの位置情報エラーを診断し、解決策を検討した。
+了解です。まず結論:「HTTPS」「LINEキャッシュ削除」「OS設定オン」を全部クリアしてもダメということは、navigator.geolocationが実際に何のエラーコードを返しているか、まだ本当には特定できていません。これまでの説明はあくまで「error.code === 1(拒否)だった場合」の対処です。本当にcode:1が返っているのか、実はcode:2(取得不可)やcode:3(タイムアウト)なのに何かの理由でモーダルが開いているのか、切り分けが必要です。
+
+まずこれをやってください:一時的なデバッグ表示
+submitReport()のエラーコールバックを、一時的に以下に差し替えてテストしてください(原因確定後は元に戻します):
+
+javascript
+function(error) {
+  // 🔧一時デバッグ用:実際のエラー内容をそのまま表示する
+  alert('code: ' + error.code + ' / message: ' + error.message);
+  btn.disabled = false;
+  btn.innerText = '現在地を取得して報告する';
+},
+これで「現在地を取得して報告する」を押したときに、本当のエラーコードが画面に出ます。それを教えてください。
+
+並行して確認してほしいこと
+Android本体の「位置情報」トグル自体(アプリ個別ではなく、設定の一番上にあるマスタースイッチ)がONになっているか
+設定→位置情報→一番上の「位置情報を使用」のようなトグル。アプリ単位の許可がONでも、これがOFFだと全アプリで取得不可になります。
+LINEの「⋯」メニューから「他のブラウザで開く」を試せるか
+これで外部のChromeで同じURLが開けて、そちらでは位置情報が取れるか確認してください。もしChromeでは取れるなら、原因はLINEアプリ内蔵ブラウザ側の制約とほぼ確定します。これは把握している範囲でも、LINE内蔵ブラウザ(WebView)がAndroidの位置情報許可プロンプトを正しく仲介できていないケースが実際に報告されています。
+Geminiが作っていた版で正常に動いていたとのことですが、そのGemini版のURLは今のGitHub Pages/LIFFと同じエンドポイントですか、それとも別のURL・別のLIFF IDでしたか？ もし別だった場合、LIFFアプリ自体の設定(スコープなど)に差がある可能性もあります。
+上の①(デバッグalertの結果)が一番重要です。まずそれを教えてください。
+
+Chromeで開いたところ、報告には進めました。
+そして、報告しました！とログは出るのですが、ピンは立ちません。
+現在地に地図は動いてたので、位置情報は取れている気がします。
+しかもそのあとリセットされて戻った時に、位置情報が取得できないとメッセージがでました。
+ですが、もういっかいほうこうボタンを押すと、また報告はできますが同じ症状です。
+まずはこれだけ報告で宇s
+
+
+デプロイ確認と技術的な原因を特定した。
+デプロイ確認と技術的な原因を特定した。
+大事な情報です。Chromeだと報告フォームまで進めて、地図も現在地に動いた ということは、位置情報自体は正しく取得できているということです。つまりAndroid×Chromeでは位置情報問題はクリアです(LINE内蔵ブラウザ側の制約という仮説はほぼ確定と見てよさそうです)。
+
+今回の新しい症状(「報告しました」と出るのにピンが立たない)を切り分けるために、まず1つ確認させてください。
+
+最優先の確認事項
+前回お渡しした修正版のCode.gsとlogic.gsは、すでにGASエディタに貼り替えて「新バージョンとして再デプロイ」済みですか？
+
+これがまだであれば、ここまでの会話の中で指摘した「generateHeatData()がUsersシートなどでエラーを起こしdoGetが失敗する」問題がまだ残ったままの可能性があります。その場合、報告(doPost)自体は成功しても、その後の地図再読み込み(doGet)が引き続き失敗し、ピンが表示されないという今回の症状と一致します。
+
+合わせてお願いしたいこと
+Chromeのアドレスバーに、直接このGAS_URLを貼って開いてみてください：
+
+https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec
+これを開くと、画面に生のJSONデータ(配列、または{"error": "..."})がそのまま表示されるはずです。その画面に表示された内容をそのままコピーして貼ってください。 これで、
+
+報告した投稿がデータとして返ってきているか
+errorが出ていないか
+indexやcalculatedEnergyが想定通りの値になっているか
+が一目で分かり、ピンが立たない原因を確定できます。
+
+「位置情報が取得できないとメッセージが出た」という後半の症状は、原因を混同しないためにいったん保留にして、まずはこの2点(①再デプロイ済みか、②doGetの生JSON)を教えてください。
+
+
+[{"index":2,"userId":"dummy_user_001","timestamp":"2026-07-03T15:49:36.418Z","category":"ポイ捨て","lat":35.690043625418646,"lng":139.8125868525259,"tWeight":0.00038330127689838417,"uTrust":1,"baseEnergy":0.00038330127689838417,"calculatedEnergy":0.0003832645492773956},{"index":3,"userId":"U4064008227c7
+
+pasted
+
+はい、デプロイ済みです。
+指示の結果はこちらです。
+
+
+POST リクエストの問題を診断し、GET パラメータへの移行を検討した。
+POST リクエストの問題を診断し、GET パラメータへの移行を検討した。
+良いデータが来ました。これでdoGet(地図データ取得)は完全に正常だと確定できます。JSONが綺麗に返ってきていて、errorもありません。
+
+ここで重要な点に気づきました。返ってきたデータの中で一番新しい報告は2026-07-10T09:03:10です。今Chromeで報告した分がここに入っていません(今日は7/11のはずです)。つまり、「報告しました」というトーストは出ているのに、実際にはスプレッドシートに新しい行が書き込まれていない可能性が高いです。
+
+疑っている原因:no-corsモードでのPOSTが、実際にはGETとして処理されている
+Google Apps ScriptのWebアプリURL(.../exec)は、内部的に一度302リダイレクトを挟んで実際の実行結果を返す仕組みになっています。ブラウザのfetchでPOST + no-corsを組み合わせると、この302リダイレクトを追いかける際に、ブラウザの仕様でPOSTがGETに自動変換されてしまうことがあります。これは古くから知られているApps Script特有の落とし穴です。
+
+もしこれが起きていると:
+
+doPostが一度も実行されず、代わりにdoGetが呼ばれる
+しかしno-corsモードだとレスポンスの中身を一切見れない(「不透明な応答」)ため、エラーも出ず、.then()は必ず成功扱いになる
+結果、「報告しました」と表示されるのに、実際は何も書き込まれない
+これは、これまでの「報告してもピンが立たない」「削除が効かない」「フィードバックが保存されない」をすべて一つの原因で説明できます。
+
+まず確定させたいこと
+スプレッドシートを直接開いて、Logsシートの一番下の行を見てください。 今Chromeで報告したはずの行(たった今のタイムスタンプ)が本当に追加されているか、確認をお願いします。もし追加されていなければ、上の仮説が確定です。
+
+恒久的な修正案:POSTをやめて、動作実績のあるGET方式に統一する
+doGetはすでに完璧に動作しているので、報告・削除・フィードバックも同じGET方式に寄せてしまうのが最も確実な解決策です。これでno-corsも不要になり、レスポンスの成否も正しく読み取れるようになります。
+
+Code.gs(全文・GET方式に統一)
+
+ファイルを作成しました, コマンドを実行しました
+ファイルを作成しました, コマンドを実行しました
+
+POST→GET方式に統一した修正版Code.gs
+Code.gs
+
+Code.gsを上書き
+bash
+
+cat > /home/claude/gas_fix/Code.gs << 'ENDOFFILE'
+const SPREADSHEET_ID = '15nCeNRUUijzXUv3iNZIVb-gKeSGfiMAf42QlJtgpGKE';
+
+// 🌟 修正: report/delete/feedback もすべて doGet 経由(GETリクエスト)に統一
+//    → GASの exec URL は内部で302リダイレクトを挟むため、POST + no-cors の組み合わせだと
+//      ブラウザ仕様でPOSTがGETに化けてしまい doPost が実行されないケースがある。
+//      doGet は既に動作実績があるため、書き込み系もすべてこちらに寄せて確実性を優先する。
+function doGet(e) {
+  try {
+    const action = e.parameter.action;
+
+    if (action === 'report') {
+      return handleReport(e.parameter);
+    }
+    if (action === 'delete') {
+      return handleDelete(e.parameter);
+    }
+    if (action === 'feedback') {
+      return handleFeedback(e.parameter);
+    }
+
+    // action が無ければ従来通り地図データを返す
+    const heatData = generateHeatData();
+    return ContentService.createTextOutput(JSON.stringify(heatData))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function handleReport(params) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('Logs');
+  const date = new Date();
+  sheet.appendRow([
+    date,
+    params.userId,
+    params.category,
+    Number(params.lat),
+    Number(params.lng),
+    '',
+    ''
+  ]);
+  return ContentService.createTextOutput(JSON.stringify({ success: true }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleDelete(params) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('Logs');
+  const rowIndex = Number(params.index);
+
+  if (sheet.getRange(rowIndex, 2).getValue() === params.userId) {
+    sheet.getRange(rowIndex, 6).setValue('DELETED');
+    return ContentService.createTextOutput(JSON.stringify({ success: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  return ContentService.createTextOutput(JSON.stringify({ success: false, reason: 'userId mismatch' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleFeedback(params) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('Logs');
+  const rowIndex = Number(params.index);
+  sheet.getRange(rowIndex, 7).setValue(params.answer);
+  return ContentService.createTextOutput(JSON.stringify({ success: true }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// 🌟 doPost は今後使わない想定だが、念のため空実装として残す(未使用)
+function doPost(e) {
+  return ContentService.createTextOutput(JSON.stringify({ success: false, reason: 'doPost is deprecated, use doGet with action param' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+ENDOFFILE
+echo done
+出力
+
+done
+完了
+index.html側の変更点(3つの関数を差し替え)
+submitReport()のfetch部分:
+
+javascript
+btn.innerText = 'データを送信中...';
+
+const reportUrl = GAS_URL
+  + '?action=report'
+  + '&userId=' + encodeURIComponent(userId)
+  + '&category=' + encodeURIComponent(category)
+  + '&lat=' + lat
+  + '&lng=' + lng;
+
+fetch(reportUrl)
+  .then(res => res.json())
+  .then(async (result) => {
+    if (result.success) {
+      showToast('報告が完了しました！');
+      switchMode('recent');
+      await refreshMapData();
+      map.panTo({ lat: lat, lng: lng });
+    } else {
+      showToast('報告に失敗しました: ' + (result.error || result.reason || '不明なエラー'));
+    }
+    btn.disabled = false;
+    btn.innerText = '現在地を取得して報告する';
+  })
+  .catch(error => {
+    showToast('通信エラーが発生しました。通信環境を確認してください。');
+    btn.disabled = false;
+    btn.innerText = '現在地を取得して報告する';
+  });
+sendFeedback()関数全体:
+
+javascript
+function sendFeedback(pointIndex, answer) {
+  if (activeInfoWindow) activeInfoWindow.close();
+  const url = GAS_URL + '?action=feedback&index=' + pointIndex + '&answer=' + answer;
+  fetch(url)
+    .then(res => res.json())
+    .then((result) => {
+      if (result.success) {
+        showToast(answer === 'YES' ? 'フィードバックありがとうございます！' : 'ズレの報告ありがとうございます。');
+      } else {
+        showToast('フィードバックの送信に失敗しました。');
+      }
+    })
+    .catch(() => showToast('通信エラーが発生しました。'));
+}
+deletePin()関数全体:
+
+javascript
+function deletePin(pointIndex, pointUserId) {
+  if (confirm('本当にこの報告を削除しますか？')) {
+    if (activeInfoWindow) activeInfoWindow.close();
+    const url = GAS_URL + '?action=delete&index=' + pointIndex + '&userId=' + encodeURIComponent(pointUserId);
+    fetch(url)
+      .then(res => res.json())
+      .then(async (result) => {
+        if (result.success) {
+          showToast('報告を削除しました。');
+          await refreshMapData();
+        } else {
+          showToast('削除に失敗しました: ' + (result.reason || '権限がありません'));
+        }
+      })
+      .catch(() => showToast('通信エラーが発生しました。'));
+  }
+}
+適用手順
+Code.gsを上記全文で置き換え(doPostは使わなくなります)
+index.htmlの3関数(submitReport内のfetch部分・sendFeedback・deletePin)を上記に置き換え
+GASを再デプロイ(新バージョンとして)
+GitHub Pagesのindex.htmlも更新
+これでno-corsを一切使わなくなるため、成功・失敗が正しく画面に表示されるようになります。以前のように「表示上は成功、実際は失敗」という不透明な状態がなくなるので、今後何か問題が起きても原因がすぐ分かるはずです。
+
+まずは、今回お願いしたスプレッドシートの直接確認(たった今の報告が行として追加されているか)だけでも先に教えていただけますか?それで仮説の確度がはっきりします。
+
+スプレッドシートでは書き込みできていました。
+index.html、全文もらえませんか？
+
+
+データ永続化を確認し、フロントエンド表示問題を診断した。
+データ永続化を確認し、フロントエンド表示問題を診断した。
+了解しました。これまでの修正(①位置情報拒否時のモーダル自動表示 ②エラー内容の可視化 ③report/feedback/deleteをGET方式に統一)をすべて反映した完全版を出します。
+
+これで次に不具合が起きても、「成功したように見えるが実は失敗している」という状態がなくなり、画面上のトーストに正直な結果(成功/失敗とその理由)が出るようになります。ピンが立たない件も、次に試したときにより手がかりが得られるはずです。
+
+
+コマンドを実行しました, ファイルを読み取りました
+コマンドを実行しました, ファイルを読み取りました
+3ファイルとも用意しました。適用順序は以下の通りです。
+
+Code.gs → GASエディタで全文置き換え(doPostは使わなくなり、report/delete/feedbackは全てdoGet経由に統一)
+logic.gs → GASエディタで全文置き換え(前回のindex+1修正・シート存在チェックを含む)
+index.html → GitHub Pages側で全文置き換え
+GASを新バージョンとして再デプロイ
+書き込み自体は前のコードでも成功していたとのことなので、report機能そのものは壊れていませんでした。ただno-corsのままだと成功/失敗が全く画面に反映されないため、これを直したことで次に何か起きても正直な結果が見えるようになります。
+
+適用後、もう一度「現在地を取得して報告する」を押してみて、以下を教えてください。
+
+表示されたトーストの文言(そのまま)
+その後「直近1時間」タブでピンが出たかどうか
+
+Index
+コード · HTML 
+
+Code
+GS 
+
+Logic
+GS 
+
+Claudeが応答したときに通知を受け取りますか？
+
+
+
+
+
+Claude は AI のため、誤りを含む可能性があります。回答内容は必ずご確認ください。
+
+
+Index · HTML
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -20,7 +338,7 @@
     
     #map-container { flex: 1; width: 100%; position: relative; }
     #map { height: 100%; width: 100%; }
-
+ 
     #form-container { 
       padding: 20px; background: white; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); box-sizing: border-box;
       position: relative; z-index: 10;
@@ -37,9 +355,10 @@
       background: rgba(0, 0, 0, 0.9); color: white; padding: 10px 20px;
       border-radius: 20px; font-size: 14px; z-index: 3000;
       transition: top 0.5s ease-in-out;
+      max-width: 85%; text-align: center;
     }
     #toast.show { top: 20px; }
-
+ 
     #helpModal {
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.6); z-index: 4000; align-items: center; justify-content: center;
@@ -54,7 +373,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
-
+ 
   <div id="toast"></div>
   
   <div id="helpModal">
@@ -70,17 +389,17 @@
       <button class="close-btn" onclick="document.getElementById('helpModal').style.display='none'">閉じる</button>
     </div>
   </div>
-
+ 
   <div id="menu-bar">
     <button id="btn-recent" class="toggle-btn active" onclick="switchMode('recent')">直近1時間</button>
     <button id="btn-mine" class="toggle-btn" onclick="switchMode('mine')">自分の報告</button>
     <button id="btn-moya" class="toggle-btn" onclick="switchMode('moya')">モヤ(熱源)</button>
   </div>
-
+ 
   <div id="map-container">
     <div id="map"></div>
   </div>
-
+ 
   <div id="form-container">
     <h2>イライラ報告フォーム</h2>
     <p>現在の状況を選択して報告してください。</p>
@@ -97,16 +416,16 @@
       <a href="#" onclick="document.getElementById('helpModal').style.display='flex'; return false;" style="font-size: 12px; color: #0066cc; text-decoration: underline;">📍 ピンの位置が大きくずれる場合はこちら</a>
     </div>
   </div>
-
+ 
   <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
-
+ 
     let map, heatmap, activeInfoWindow;
     let markerList = []; 
     let knownPinIndexes = new Set();
     let userId = 'GUEST_USER';
     let currentMode = 'recent'; 
-
+ 
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
       if (liff.isLoggedIn()) {
         liff.getProfile().then(profile => { userId = profile.userId; });
@@ -114,7 +433,7 @@
         liff.login();
       }
     }).catch(err => console.error('LIFF初期化失敗:', err));
-
+ 
     async function initMap() {
       const kinshicho = { lat: 35.6966, lng: 139.8143 };
       map = new google.maps.Map(document.getElementById('map'), {
@@ -122,7 +441,7 @@
       });
       await refreshMapData();
     }
-
+ 
     function switchMode(mode) {
       currentMode = mode;
       document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
@@ -130,17 +449,17 @@
       if (activeInfoWindow) activeInfoWindow.close();
       applyView(); 
     }
-
+ 
     function applyView() {
       if (heatmap) {
         heatmap.setMap(currentMode === 'moya' ? map : null);
       }
-
+ 
       const now = new Date();
       markerList.forEach(item => {
         let shouldShow = false;
         if (currentMode === 'recent') {
-          // 直近1時間以内なら無条件で表示
+          // 直近1時間以内なら無条件で表示（誰の投稿でも）
           const diffMin = Math.abs(now - new Date(item.data.timestamp)) / (1000 * 60);
           if (diffMin <= 60) shouldShow = true;
         } else if (currentMode === 'mine') {
@@ -150,24 +469,24 @@
         item.marker.setMap(shouldShow ? map : null);
       });
     }
-
+ 
     async function refreshMapData() {
       try {
         const response = await fetch(GAS_URL + "?t=" + new Date().getTime());
         const text = await response.text();
         const data = JSON.parse(text);
-    
-        // 🌟追加: サーバー側でエラーが起きた場合、その内容をそのまま表示する
+ 
+        // 🌟サーバー側でエラーが起きた場合、その内容をそのまま表示する
         if (data.error) {
           console.error('サーバーエラー:', data.error);
           showToast('サーバーエラー: ' + data.error);
           return;
         }
-    
+ 
         if (heatmap) heatmap.setMap(null);
         markerList.forEach(m => m.marker.setMap(null));
-        markerList = [];
-    
+        markerList = []; 
+ 
         const heatmapData = data.map(point => ({
           location: new google.maps.LatLng(point.lat, point.lng),
           weight: point.calculatedEnergy
@@ -175,27 +494,28 @@
         heatmap = new google.maps.visualization.HeatmapLayer({
           data: heatmapData, radius: 40, opacity: 0.6
         });
-    
+ 
         const now = new Date();
         data.forEach(point => {
           const diffMin = Math.abs(now - new Date(point.timestamp)) / (1000 * 60);
           const isMine = point.userId === userId;
-    
+          
+          // 1時間以内のデータ、または自分のデータなら裏側でピンを作っておく
           if (diffMin <= 60 || isMine) {
             const isNew = !knownPinIndexes.has(point.index);
             knownPinIndexes.add(point.index);
             createMarkerObj(point, isNew);
           }
         });
-    
-        applyView();
-    
+ 
+        applyView(); 
+ 
       } catch (error) {
         console.error('データ取得エラー:', error);
         showToast('地図データの読み込みに失敗しました。');
       }
     }
-
+ 
     function getTimeAgo(dateString) {
       if (!dateString) return 'たった今';
       const now = new Date();
@@ -207,7 +527,7 @@
       if (diffHour < 24) return diffHour + '時間前';
       return Math.floor(diffHour / 24) + '日前';
     }
-
+ 
     function createMarkerObj(point, isNew) {
       const marker = new google.maps.Marker({
         position: { lat: point.lat, lng: point.lng },
@@ -216,7 +536,7 @@
       });
       
       const timeText = isNew ? 'たった今' : getTimeAgo(point.timestamp);
-
+ 
       let contentHtml = `
         <div style="padding:5px; width: 160px;">
           <div style="font-weight:bold; font-size:14px; margin-bottom:4px;">${point.category}</div>
@@ -230,7 +550,7 @@
             </div>
           </div>
       `;
-
+ 
       if (point.userId === userId) {
         contentHtml += `
           <div style="margin-top: 10px;">
@@ -238,7 +558,7 @@
           </div>
         `;
       }
-
+ 
       contentHtml += `</div>`;
       const infoWindow = new google.maps.InfoWindow({ content: contentHtml });
       
@@ -247,93 +567,104 @@
         infoWindow.open(map, marker);
         activeInfoWindow = infoWindow;
       });
-
+ 
       markerList.push({ marker: marker, data: point });
     }
-
-    // 🌟🌟 究極の修正：セキュリティブロック（CORSエラー）を回避する「no-cors」モードを追加
+ 
+    // 🌟修正: no-cors + POST をやめ、動作実績のある GET 方式に統一。
+    // これにより成功/失敗が正しくわかるようになる。
     function submitReport() {
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
       btn.innerText = '位置情報を取得中...';
-
+ 
       if (!navigator.geolocation) {
         showToast('このブラウザは位置情報に対応していません。');
         btn.disabled = false; return;
       }
-
+ 
       navigator.geolocation.getCurrentPosition(
         function(position) {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
           const category = document.getElementById('category').value;
           btn.innerText = 'データを送信中...';
-
-          fetch(GAS_URL, {
-            method: 'POST',
-            mode: 'no-cors', // これが通信エラーを防ぐ魔法の設定です
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ action: 'report', userId: userId, category: category, lat: lat, lng: lng })
-          })
-          .then(async () => {
-            // no-cors通信はエラーで止まらないので、強制的に成功扱いとして即反映させる
-            showToast('報告が完了しました！');
-            switchMode('recent'); 
-            await refreshMapData(); 
-            map.panTo({ lat: lat, lng: lng });
-            btn.disabled = false;
-            btn.innerText = '現在地を取得して報告する';
-          })
-          .catch(error => {
-            showToast('通信エラーが発生しました。通信環境を確認してください。');
-            btn.disabled = false;
-            btn.innerText = '現在地を取得して報告する';
-          });
+ 
+          const reportUrl = GAS_URL
+            + '?action=report'
+            + '&userId=' + encodeURIComponent(userId)
+            + '&category=' + encodeURIComponent(category)
+            + '&lat=' + lat
+            + '&lng=' + lng;
+ 
+          fetch(reportUrl)
+            .then(res => res.json())
+            .then(async (result) => {
+              if (result.success) {
+                showToast('報告が完了しました！');
+                switchMode('recent');
+                await refreshMapData();
+                map.panTo({ lat: lat, lng: lng });
+              } else {
+                showToast('報告に失敗しました: ' + (result.error || result.reason || '不明なエラー'));
+              }
+              btn.disabled = false;
+              btn.innerText = '現在地を取得して報告する';
+            })
+            .catch(error => {
+              showToast('通信エラーが発生しました。通信環境を確認してください。');
+              btn.disabled = false;
+              btn.innerText = '現在地を取得して報告する';
+            });
         },
-function(error) {
-  // 🌟追加: 位置情報が「拒否」された場合(code===1)、設定手順のモーダルを自動表示する
-  if (error.code === 1) {
-    document.getElementById('helpModal').style.display = 'flex';
-    showToast('位置情報の許可が必要です。');
-  } else {
-    showToast('位置情報が取得できませんでした。');
-  }
-  btn.disabled = false;
-  btn.innerText = '現在地を取得して報告する';
-},
+        function(error) {
+          // 🌟位置情報が「拒否」された場合(code===1)、設定手順のモーダルを自動表示する
+          if (error.code === 1) {
+            document.getElementById('helpModal').style.display = 'flex';
+            showToast('位置情報の許可が必要です。');
+          } else {
+            showToast('位置情報が取得できませんでした。');
+          }
+          btn.disabled = false;
+          btn.innerText = '現在地を取得して報告する';
+        },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
-
+ 
     function sendFeedback(pointIndex, answer) {
       if (activeInfoWindow) activeInfoWindow.close();
-      fetch(GAS_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ action: 'feedback', index: pointIndex, answer: answer })
-      })
-      .then(() => {
-        showToast(answer === 'YES' ? 'フィードバックありがとうございます！' : 'ズレの報告ありがとうございます。');
-      }).catch(() => showToast('通信エラーが発生しました。'));
+      const url = GAS_URL + '?action=feedback&index=' + pointIndex + '&answer=' + answer;
+      fetch(url)
+        .then(res => res.json())
+        .then((result) => {
+          if (result.success) {
+            showToast(answer === 'YES' ? 'フィードバックありがとうございます！' : 'ズレの報告ありがとうございます。');
+          } else {
+            showToast('フィードバックの送信に失敗しました。');
+          }
+        })
+        .catch(() => showToast('通信エラーが発生しました。'));
     }
-
+ 
     function deletePin(pointIndex, pointUserId) {
       if (confirm('本当にこの報告を削除しますか？')) {
         if (activeInfoWindow) activeInfoWindow.close();
-        fetch(GAS_URL, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ action: 'delete', index: pointIndex, userId: pointUserId })
-        })
-        .then(async () => {
-          showToast('報告を削除しました。');
-          await refreshMapData(); 
-        }).catch(() => showToast('通信エラーが発生しました。'));
+        const url = GAS_URL + '?action=delete&index=' + pointIndex + '&userId=' + encodeURIComponent(pointUserId);
+        fetch(url)
+          .then(res => res.json())
+          .then(async (result) => {
+            if (result.success) {
+              showToast('報告を削除しました。');
+              await refreshMapData();
+            } else {
+              showToast('削除に失敗しました: ' + (result.reason || '権限がありません'));
+            }
+          })
+          .catch(() => showToast('通信エラーが発生しました。'));
       }
     }
-
+ 
     function showToast(message) {
       const toast = document.getElementById('toast');
       toast.innerText = message;
@@ -344,3 +675,4 @@ function(error) {
   <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBMCEQHdlzcrcLI4hziAioehbIs4CRWerA&libraries=visualization&callback=initMap"></script>
 </body>
 </html>
+ 
