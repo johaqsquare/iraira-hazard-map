@@ -7,7 +7,6 @@
   <style>
     html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; background: #f0f0f0;}
     
-    /* 絶対に消えない画面最上部のメニューバー */
     #menu-bar {
       background: white; padding: 12px 10px; display: flex; justify-content: center; gap: 8px;
       box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 2000;
@@ -40,6 +39,14 @@
       max-width: 85%; text-align: center;
     }
     #toast.show { top: 20px; }
+
+    #legend {
+      position: absolute; bottom: 10px; left: 10px; background: white; padding: 8px 12px;
+      border-radius: 6px; font-size: 11px; box-shadow: 0 1px 4px rgba(0,0,0,0.3); z-index: 1500;
+      display: flex; gap: 12px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
     #helpModal {
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -80,6 +87,10 @@
 
   <div id="map-container">
     <div id="map"></div>
+    <div id="legend">
+      <div class="legend-item"><span class="legend-dot" style="background:#06C755;"></span>自分の報告</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#ff4d4f;"></span>他の人の報告</div>
+    </div>
   </div>
 
   <div id="form-container">
@@ -102,8 +113,9 @@
   <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycbyadC6MAmijFqJZWQLhG9SYg-GP94DKpQc5J7bpmxxeHbO3C6Vbx5Ehhw5HpHZukN89/exec';
 
-    let map, heatmap, activeInfoWindow;
+    let map, activeInfoWindow;
     let markerList = []; 
+    let moyaCircles = [];
     let knownPinIndexes = new Set();
     let userId = 'GUEST_USER';
     let currentMode = 'recent'; 
@@ -121,7 +133,15 @@
       map = new google.maps.Map(document.getElementById('map'), {
         zoom: 16, center: kinshicho, mapTypeId: 'roadmap', disableDefaultUI: true, zoomControl: true
       });
-      await refreshMapData();
+
+      const success = await refreshMapData();
+      if (!success) {
+        // 🌟初回読み込みが失敗した場合、GAS側の起動遅延(コールドスタート)対策として
+        //   少し待ってから自動的にもう一度だけ読み込みを試みる
+        setTimeout(async () => {
+          await refreshMapData();
+        }, 2500);
+      }
     }
 
     function switchMode(mode) {
@@ -133,75 +153,93 @@
     }
 
     function applyView() {
-      if (heatmap) {
-        heatmap.setMap(currentMode === 'moya' ? map : null);
-      }
+      // モヤ(円)の表示切り替え
+      moyaCircles.forEach(c => c.setMap(currentMode === 'moya' ? map : null));
 
       const now = new Date();
       markerList.forEach(item => {
         let shouldShow = false;
         if (currentMode === 'recent') {
-          // 直近1時間以内なら無条件で表示（誰の投稿でも）
           const diffMin = Math.abs(now - new Date(item.data.timestamp)) / (1000 * 60);
           if (diffMin <= 60) shouldShow = true;
         } else if (currentMode === 'mine') {
-          // 自分の投稿なら無条件で表示
           if (item.data.userId === userId) shouldShow = true;
         }
         item.marker.setMap(shouldShow ? map : null);
       });
     }
 
+    // 🌟戻り値: 読み込みが成功したかどうか(true/false)。initMapの自動リトライ判定に使う
     async function refreshMapData() {
-  try {
-    const response = await fetch(GAS_URL + "?t=" + new Date().getTime());
-    const text = await response.text();
-    const data = JSON.parse(text);
+      try {
+        const response = await fetch(GAS_URL + "?t=" + new Date().getTime());
+        const text = await response.text();
+        const data = JSON.parse(text);
 
-    if (data.error) {
-      console.error('サーバーエラー:', data.error);
-      showToast('サーバーエラー: ' + data.error);
-      return;
-    }
+        if (data.error) {
+          console.error('サーバーエラー:', data.error);
+          showToast('サーバーエラー: ' + data.error);
+          return false;
+        }
 
-    // 既存マーカーをクリア
-    markerList.forEach(m => m.marker.setMap(null));
-    markerList = [];
+        // 既存マーカーをクリア
+        markerList.forEach(m => m.marker.setMap(null));
+        markerList = []; 
 
-    // 🌟先にピンを作成する（モヤの生成に失敗してもピン表示は独立して動くようにする）
-    const now = new Date();
-    data.forEach(point => {
-      const diffMin = Math.abs(now - new Date(point.timestamp)) / (1000 * 60);
-      const isMine = point.userId === userId;
-      if (diffMin <= 60 || isMine) {
-        const isNew = !knownPinIndexes.has(point.index);
-        knownPinIndexes.add(point.index);
-        createMarkerObj(point, isNew);
+        // 🌟先にピンを作成する(モヤの生成に失敗してもピン表示は独立して動くようにする)
+        const now = new Date();
+        data.forEach(point => {
+          const diffMin = Math.abs(now - new Date(point.timestamp)) / (1000 * 60);
+          const isMine = point.userId === userId;
+          
+          if (diffMin <= 60 || isMine) {
+            const isNew = !knownPinIndexes.has(point.index);
+            knownPinIndexes.add(point.index);
+            createMarkerObj(point, isNew);
+          }
+        });
+
+        // 🌟モヤ(熱源)の描画。HeatmapLayerはMaps JS API v3.65で廃止されたため、
+        //   calculatedEnergyに応じた半透明の円を重ねる方式で疑似的に再現する
+        try {
+          renderMoya(data);
+        } catch (moyaError) {
+          console.error('モヤ(熱源)の描画に失敗しました:', moyaError);
+          showToast('モヤの表示に失敗しました: ' + moyaError.message);
+        }
+
+        applyView(); 
+        return true;
+
+      } catch (error) {
+        console.error('データ取得エラー:', error);
+        showToast('地図データの読み込みに失敗しました: ' + error.message);
+        return false;
       }
-    });
-
-    // 🌟モヤ(ヒートマップ)の生成は別のtry-catchで囲み、失敗してもピン表示に影響させない
-    try {
-      if (heatmap) heatmap.setMap(null);
-      const heatmapData = data.map(point => ({
-        location: new google.maps.LatLng(point.lat, point.lng),
-        weight: point.calculatedEnergy
-      }));
-      heatmap = new google.maps.visualization.HeatmapLayer({
-        data: heatmapData, radius: 40, opacity: 0.6
-      });
-    } catch (heatmapError) {
-      console.error('モヤ(ヒートマップ)の生成に失敗しました:', heatmapError);
-      showToast('モヤの表示に失敗しました: ' + heatmapError.message);
     }
 
-    applyView();
+    function renderMoya(data) {
+      // 古い円を消す
+      moyaCircles.forEach(c => c.setMap(null));
+      moyaCircles = [];
 
-  } catch (error) {
-    console.error('データ取得エラー:', error);
-    showToast('地図データの読み込みに失敗しました: ' + error.message);
-  }
-}
+      data.forEach(point => {
+        if (!point.calculatedEnergy || point.calculatedEnergy <= 0) return;
+
+        // エネルギー値を不透明度(0〜0.6程度)にマッピング
+        const opacity = Math.min(point.calculatedEnergy * 0.3, 0.6);
+
+        const circle = new google.maps.Circle({
+          strokeWeight: 0,
+          fillColor: '#ff4d4f',
+          fillOpacity: opacity,
+          map: currentMode === 'moya' ? map : null,
+          center: { lat: point.lat, lng: point.lng },
+          radius: 25 // メートル。広げたい場合はここを大きくする
+        });
+        moyaCircles.push(circle);
+      });
+    }
 
     function getTimeAgo(dateString) {
       if (!dateString) return 'たった今';
@@ -216,10 +254,21 @@
     }
 
     function createMarkerObj(point, isNew) {
+      const isMine = point.userId === userId;
+
       const marker = new google.maps.Marker({
         position: { lat: point.lat, lng: point.lng },
         title: point.category,
-        animation: isNew ? google.maps.Animation.DROP : null 
+        animation: isNew ? google.maps.Animation.DROP : null,
+        // 🌟自分の報告=緑(LINEカラー)、他人の報告=赤、で色分け
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 9,
+          fillColor: isMine ? '#06C755' : '#ff4d4f',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2
+        }
       });
       
       const timeText = isNew ? 'たった今' : getTimeAgo(point.timestamp);
@@ -238,7 +287,7 @@
           </div>
       `;
 
-      if (point.userId === userId) {
+      if (isMine) {
         contentHtml += `
           <div style="margin-top: 10px;">
             <button onclick="deletePin(${point.index}, '${point.userId}')" style="width:100%; padding:6px; background:#f0f0f0; border:none; color:#666; border-radius:4px; font-size:11px; cursor:pointer;">🗑️ この報告を削除する</button>
@@ -258,8 +307,6 @@
       markerList.push({ marker: marker, data: point });
     }
 
-    // 🌟修正: no-cors + POST をやめ、動作実績のある GET 方式に統一。
-    // これにより成功/失敗が正しくわかるようになる。
     function submitReport() {
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
@@ -305,7 +352,6 @@
             });
         },
         function(error) {
-          // 🌟位置情報が「拒否」された場合(code===1)、設定手順のモーダルを自動表示する
           if (error.code === 1) {
             document.getElementById('helpModal').style.display = 'flex';
             showToast('位置情報の許可が必要です。');
@@ -359,6 +405,6 @@
       setTimeout(() => { toast.classList.remove('show'); }, 3000);
     }
   </script>
-  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBMCEQHdlzcrcLI4hziAioehbIs4CRWerA&libraries=visualization&callback=initMap"></script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBMCEQHdlzcrcLI4hziAioehbIs4CRWerA&callback=initMap"></script>
 </body>
 </html>
