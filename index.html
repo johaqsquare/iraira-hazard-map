@@ -112,6 +112,7 @@
       <option value="ペットの糞">ペットの糞</option>
     </select>
     <button id="submitBtn" onclick="submitReport()">現在地を取得して報告する</button>
+    <button id="viewLocationBtn" onclick="viewMyLocation()" style="background:#fff; color:#06C755; border:1px solid #06C755; margin-top:8px;">📍 現在地を見るだけ(投稿しない)</button>
     
     <div style="text-align: center; margin-top: 15px;">
       <a href="#" onclick="document.getElementById('helpModal').style.display='flex'; return false;" style="font-size: 12px; color: #0066cc; text-decoration: underline;">📍 ピンの位置が大きくずれる場合はこちら</a>
@@ -261,8 +262,16 @@
           fillOpacity: opacity,
           map: currentMode === 'moya' ? map : null,
           center: { lat: point.lat, lng: point.lng },
-          radius: 25 // メートル。広げたい場合はここを大きくする
+          radius: 25, // メートル。広げたい場合はここを大きくする
+          clickable: true
         });
+
+        // 🌟円(モヤ)自体をタップした場合、地図の click イベントは発火しない
+        //   (図形が上に乗っているため)。円ごとに直接リスナーを付けて対応する。
+        circle.addListener('click', (e) => {
+          showAreaStats(e.latLng.lat(), e.latLng.lng());
+        });
+
         moyaCircles.push(circle);
       });
     }
@@ -397,6 +406,43 @@
       });
 
       markerList.push({ marker: marker, data: point });
+    }
+
+    // 🌟投稿せず、現在地に地図を移動するだけの機能(見るだけの人向け)
+    function viewMyLocation() {
+      const btn = document.getElementById('viewLocationBtn');
+      btn.disabled = true;
+      const originalText = btn.innerText;
+      btn.innerText = '現在地を取得中...';
+
+      if (!navigator.geolocation) {
+        showToast('このブラウザは位置情報に対応していません。');
+        btn.disabled = false;
+        btn.innerText = originalText;
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          map.panTo({ lat: lat, lng: lng });
+          map.setZoom(17);
+          btn.disabled = false;
+          btn.innerText = originalText;
+        },
+        function(error) {
+          if (error.code === 1) {
+            document.getElementById('helpModal').style.display = 'flex';
+            showToast('位置情報の許可が必要です。');
+          } else {
+            showToast('位置情報が取得できませんでした。');
+          }
+          btn.disabled = false;
+          btn.innerText = originalText;
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
     }
 
     function submitReport() {
