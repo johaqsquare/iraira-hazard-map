@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>html2canvas 動作確認テスト</title>
+<style>
+  body { font-family: sans-serif; padding: 20px; background:#f0f0f0; margin:0; }
+  h2 { font-size:15px; text-align:center; color:#333; }
+  #card { width: 300px; background:white; border-radius:14px; overflow:hidden; margin: 0 auto 20px; border:1px solid #ddd; }
+  #card .photo { height:160px; background:#f2f1ec; position:relative; }
+  #card .photo .circle1 { position:absolute; width:80px;height:80px;border-radius:50%; background:rgba(226,75,74,0.35); top:40px;left:60px; }
+  #card .photo .pin { position:absolute; width:14px;height:14px;border-radius:50%; background:#06C755; border:2px solid white; top:80px;left:95px; }
+  #card .photo .tag { position:absolute; top:8px;left:8px; background:rgba(0,0,0,0.55); color:#fff; font-size:11px; padding:3px 8px; border-radius:10px; }
+  #card .body { padding:14px 16px; }
+  #card .date { font-size:11px; color:#888; margin:0 0 4px; }
+  #card .title { font-size:16px; font-weight:bold; margin:0 0 8px; }
+  #card .desc { font-size:13px; color:#555; line-height:1.6; margin:0 0 10px; }
+  #card .tags span { font-size:11px; background:#eef; color:#448; padding:3px 8px; border-radius:6px; margin-right:6px; }
+  button { display:block; width:280px; margin:0 auto 12px; padding:12px; font-size:15px; border:none; border-radius:8px; background:#06C755; color:white; font-weight:bold; }
+  button:disabled { background:#aaa; }
+  #result { text-align:center; margin-top:20px; }
+  #result img { max-width:300px; border:1px solid #ccc; border-radius:8px; }
+  #log { max-width:280px; margin:20px auto; font-size:12px; color:#900; white-space:pre-wrap; background:white; padding:10px; border-radius:6px; }
+</style>
+</head>
+<body>
+
+<h2>html2canvas 動作確認テスト</h2>
+
+<div id="card">
+  <div class="photo">
+    <div class="circle1"></div>
+    <div class="pin"></div>
+    <div class="tag">錦糸町 南口付近</div>
+  </div>
+  <div class="body">
+    <p class="date">2026年7月11日 15:32</p>
+    <p class="title">ポイ捨てを目撃</p>
+    <p class="desc">この付近では直近30日で「ポイ捨て」の報告が最多。街の小さな違和感を記録しました。</p>
+    <div class="tags"><span>#イライラハザードマップ</span><span>#錦糸町</span></div>
+  </div>
+</div>
+
+<button id="btn" onclick="capture()">この見た目のまま画像化する</button>
+
+<div id="log"></div>
+<div id="result"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+function log(msg) {
+  const el = document.getElementById('log');
+  el.style.display = 'block';
+  el.innerText += msg + '\n';
+}
+
+async function capture() {
+  const btn = document.getElementById('btn');
+  btn.disabled = true;
+  btn.innerText = '画像化しています...';
+
+  try {
+    const card = document.getElementById('card');
+    const canvas = await html2canvas(card, {
+      backgroundColor: '#ffffff',
+      scale: 2, // 高解像度化(SNS投稿に耐える解像度にするため)
+      useCORS: true
+    });
+
+    log('✅ html2canvas 成功。生成サイズ: ' + canvas.width + ' x ' + canvas.height);
+
+    const dataUrl = canvas.toDataURL('image/png');
+
+    const resultDiv = document.getElementById('result');
+    resultDiv.innerHTML = '<p style="font-size:13px;color:#333;">生成結果 ↓ (画像を長押しして保存できるか試してください)</p>';
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    resultDiv.appendChild(img);
+
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = 'irairahazard_share_test.png';
+    link.innerText = '📥 ダウンロードリンクを試す';
+    link.style.display = 'block';
+    link.style.textAlign = 'center';
+    link.style.marginTop = '10px';
+    link.style.color = '#06C755';
+    resultDiv.appendChild(link);
+
+    btn.disabled = false;
+    btn.innerText = 'もう一度画像化する';
+
+  } catch (error) {
+    log('❌ エラー発生: ' + error.message);
+    btn.disabled = false;
+    btn.innerText = 'この見た目のまま画像化する';
+  }
+}
+</script>
+</body>
+</html>
