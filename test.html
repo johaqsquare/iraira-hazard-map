@@ -66,32 +66,94 @@ async function capture() {
     const card = document.getElementById('card');
     const canvas = await html2canvas(card, {
       backgroundColor: '#ffffff',
-      scale: 2, // 高解像度化(SNS投稿に耐える解像度にするため)
+      scale: 3, // 🌟2→3に引き上げ(画質改善)
       useCORS: true
     });
 
     log('✅ html2canvas 成功。生成サイズ: ' + canvas.width + ' x ' + canvas.height);
 
-    const dataUrl = canvas.toDataURL('image/png');
+    // 🌟 toDataURL(base64) ではなく toBlob を使う。
+    //    base64をそのまま<a>タグのhrefに渡す方式は、Androidの一部ブラウザ/
+    //    アプリ内ブラウザで download 属性が無視されたり、長押し保存で
+    //    正しいファイルとして認識されない場合がある。Blob + ObjectURL の方が
+    //    実ファイルとして扱われるため信頼性が高い。
+    canvas.toBlob(function(blob) {
+      if (!blob) {
+        log('❌ Blobの生成に失敗しました');
+        btn.disabled = false;
+        btn.innerText = 'この見た目のまま画像化する';
+        return;
+      }
 
-    const resultDiv = document.getElementById('result');
-    resultDiv.innerHTML = '<p style="font-size:13px;color:#333;">生成結果 ↓ (画像を長押しして保存できるか試してください)</p>';
-    const img = document.createElement('img');
-    img.src = dataUrl;
-    resultDiv.appendChild(img);
+      const blobUrl = URL.createObjectURL(blob);
+      const fileName = 'irairahazard_share_test.png';
 
-    const link = document.createElement('a');
-    link.href = dataUrl;
-    link.download = 'irairahazard_share_test.png';
-    link.innerText = '📥 ダウンロードリンクを試す';
-    link.style.display = 'block';
-    link.style.textAlign = 'center';
-    link.style.marginTop = '10px';
-    link.style.color = '#06C755';
-    resultDiv.appendChild(link);
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = '<p style="font-size:13px;color:#333;">生成結果 ↓</p>';
 
-    btn.disabled = false;
-    btn.innerText = 'もう一度画像化する';
+      const img = document.createElement('img');
+      img.src = blobUrl;
+      resultDiv.appendChild(img);
+
+      // 🌟 Web Share API (navigator.share): 本番で使いたい理想の共有方式。
+      //    OS標準の共有シート(LINE・X・写真アプリ等を選べる画面)を1タップで呼び出せる。
+      //    ファイル共有に対応しているか(canShareでフィーチャーディテクト)を確認し、
+      //    対応していればボタンを表示する。
+      const file = new File([blob], fileName, { type: 'image/png' });
+      const canUseShareAPI = navigator.canShare && navigator.canShare({ files: [file] });
+
+      if (canUseShareAPI) {
+        const shareBtn = document.createElement('button');
+        shareBtn.id = 'shareBtn';
+        shareBtn.innerText = '📤 共有する(本番で使いたい方式)';
+        shareBtn.style.marginTop = '14px';
+        shareBtn.onclick = async () => {
+          try {
+            await navigator.share({
+              files: [file],
+              title: 'イライラハザードマップ',
+              text: 'ポイ捨てを目撃しました #イライラハザードマップ'
+            });
+            log('✅ navigator.share 成功(共有シートが開きました)');
+          } catch (shareError) {
+            log('❌ navigator.share エラー: ' + shareError.message);
+          }
+        };
+        resultDiv.appendChild(shareBtn);
+
+        const info = document.createElement('div');
+        info.id = 'supportInfo';
+        info.innerText = 'この端末・ブラウザは Web Share API(ファイル共有)に対応しています。';
+        resultDiv.appendChild(info);
+      } else {
+        const info = document.createElement('div');
+        info.id = 'supportInfo';
+        info.innerText = '⚠️ この端末・ブラウザは Web Share API のファイル共有に対応していません。ダウンロードリンク・長押し保存をお試しください。';
+        resultDiv.appendChild(info);
+      }
+
+      // フォールバック用のダウンロードリンク(Blob方式)
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      link.innerText = '📥 ダウンロードリンクを試す(Blob方式)';
+      link.style.display = 'block';
+      link.style.textAlign = 'center';
+      link.style.marginTop = '10px';
+      link.style.color = '#06C755';
+      resultDiv.appendChild(link);
+
+      const hint = document.createElement('p');
+      hint.style.fontSize = '12px';
+      hint.style.color = '#666';
+      hint.style.textAlign = 'center';
+      hint.style.marginTop = '10px';
+      hint.innerText = '(画像を長押しして保存できるかも試してください)';
+      resultDiv.appendChild(hint);
+
+      btn.disabled = false;
+      btn.innerText = 'もう一度画像化する';
+    }, 'image/png');
 
   } catch (error) {
     log('❌ エラー発生: ' + error.message);
