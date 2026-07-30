@@ -65,6 +65,27 @@
     #helpModal h3 { margin: 0 0 10px 0; font-size: 16px; color: #333; }
     #helpModal p { font-size: 13px; line-height: 1.5; margin-bottom: 10px; color: #444; }
     #helpModal .close-btn { background: #ccc; color: #333; margin-top: 15px; padding: 10px; width: 100%; }
+
+    #shareModal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6); z-index: 4000; align-items: center; justify-content: center;
+    }
+    #shareModal .modal-content {
+      background: white; padding: 20px; border-radius: 10px; width: 88%; max-width: 340px; box-sizing: border-box;
+      max-height: 85vh; overflow-y: auto;
+    }
+    #shareModal h3 { margin: 0 0 6px 0; font-size: 16px; color: #333; }
+    #shareModal p.desc { font-size: 12px; color: #888; margin: 0 0 14px 0; }
+    .format-btn {
+      display: block; width: 100%; padding: 14px; margin-bottom: 10px; border: 1px solid #ddd;
+      background: white; border-radius: 8px; font-size: 14px; color: #333; font-weight: bold; text-align: left;
+    }
+    .format-btn small { display: block; font-weight: normal; color: #888; font-size: 11px; margin-top: 2px; }
+    .format-btn:disabled { opacity: 0.5; }
+    #shareResult img { width: 100%; border-radius: 8px; margin-bottom: 12px; }
+    .share-action-btn { background: #06C755; color: white; margin-top: 0; }
+    .share-action-btn.secondary { background: #fff; color: #333; border: 1px solid #ccc; }
+    #shareModal .close-btn { background: #eee; color: #666; margin-top: 10px; padding: 10px; width: 100%; border: none; border-radius: 8px; }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -83,6 +104,25 @@
         <p style="margin:0;"><strong>🤖 Androidの場合</strong><br>設定 ＞ 位置情報 ＞ アプリの権限 ＞ LINE（またはChrome） ＞ <strong>「正確な位置情報を使用」</strong>をオン</p>
       </div>
       <button class="close-btn" onclick="document.getElementById('helpModal').style.display='none'">閉じる</button>
+    </div>
+  </div>
+
+  <div id="shareModal">
+    <div class="modal-content">
+      <div id="shareStep1">
+        <h3>SNSにシェアしますか？</h3>
+        <p class="desc">見せ方を選んでください。あとで変更もできます。</p>
+        <button class="format-btn" onclick="requestShareImage('A')">📋 情報提供求む<small>掲示板のポスター風</small></button>
+        <button class="format-btn" onclick="requestShareImage('B')">📺 ニュース速報<small>速報テロップ風</small></button>
+        <button class="format-btn" onclick="requestShareImage('C')">🚨 指名手配<small>レトロな手配書風</small></button>
+      </div>
+      <div id="shareStep2" style="display:none;">
+        <h3>シェア画像ができました</h3>
+        <div id="shareResult"></div>
+        <button class="share-action-btn" id="shareXBtn" style="width:100%; padding:12px; border:none; border-radius:8px; font-weight:bold;">🐦 Xでシェア</button>
+        <button class="share-action-btn secondary" id="shareCopyBtn" style="width:100%; padding:12px; border-radius:8px; font-weight:bold; margin-top:8px;">🔗 リンクをコピー</button>
+      </div>
+      <button class="close-btn" onclick="closeShareModal()">閉じる</button>
     </div>
   </div>
 
@@ -477,6 +517,7 @@
                 switchMode('recent');
                 await refreshMapData();
                 map.panTo({ lat: lat, lng: lng });
+                openShareModal(lat, lng, category); // 🌟報告完了後、SNSシェアの導線を開く
               } else {
                 showToast('報告に失敗しました: ' + (result.error || result.reason || '不明なエラー'));
               }
@@ -541,6 +582,68 @@
       toast.innerText = message;
       toast.classList.add('show');
       setTimeout(() => { toast.classList.remove('show'); }, 3000);
+    }
+
+    // 🌟 ここから、報告完了後のSNSシェア機能
+    let pendingShareData = null; // 直前に報告した投稿の位置・カテゴリを一時保持
+
+    function openShareModal(lat, lng, category) {
+      pendingShareData = { lat: lat, lng: lng, category: category };
+      document.getElementById('shareStep1').style.display = 'block';
+      document.getElementById('shareStep2').style.display = 'none';
+      document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
+      document.getElementById('shareModal').style.display = 'flex';
+    }
+
+    function closeShareModal() {
+      document.getElementById('shareModal').style.display = 'none';
+    }
+
+    function requestShareImage(format) {
+      if (!pendingShareData) return;
+
+      document.querySelectorAll('.format-btn').forEach(b => b.disabled = true);
+      showToast('画像を作成しています...');
+
+      const url = GAS_URL
+        + '?action=createShare'
+        + '&format=' + format
+        + '&category=' + encodeURIComponent(pendingShareData.category)
+        + '&lat=' + pendingShareData.lat
+        + '&lng=' + pendingShareData.lng;
+
+      fetch(url)
+        .then(res => res.json())
+        .then((result) => {
+          document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
+
+          if (!result.success) {
+            showToast('画像の作成に失敗しました: ' + (result.error || '不明なエラー'));
+            return;
+          }
+
+          document.getElementById('shareStep1').style.display = 'none';
+          document.getElementById('shareStep2').style.display = 'block';
+          document.getElementById('shareResult').innerHTML =
+            '<img src="' + result.imageUrl + '" alt="シェア画像">';
+
+          const tweetText = encodeURIComponent(pendingShareData.category + 'を目撃 #イライラハザードマップ');
+          const shareUrlEncoded = encodeURIComponent(result.shareUrl);
+
+          document.getElementById('shareXBtn').onclick = () => {
+            window.open('https://twitter.com/intent/tweet?text=' + tweetText + '&url=' + shareUrlEncoded, '_blank');
+          };
+
+          document.getElementById('shareCopyBtn').onclick = () => {
+            navigator.clipboard.writeText(result.shareUrl)
+              .then(() => showToast('リンクをコピーしました'))
+              .catch(() => showToast('コピーに失敗しました。長押しでURLを選択してコピーしてください。'));
+          };
+        })
+        .catch(() => {
+          document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
+          showToast('通信エラーが発生しました。');
+        });
     }
   </script>
   <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBMCEQHdlzcrcLI4hziAioehbIs4CRWerA&callback=initMap"></script>
