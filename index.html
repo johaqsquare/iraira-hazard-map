@@ -11,6 +11,24 @@
       background: white; padding: 12px 10px; display: flex; justify-content: center; gap: 8px;
       box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 2000;
     }
+
+    #splashScreen {
+      position: fixed; inset: 0; z-index: 9000; background: #06C755;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: white; text-align: center;
+    }
+    #splashScreen .splash-pin {
+      width: 22px; height: 22px; border-radius: 50%; background: white;
+      margin-bottom: 18px; box-shadow: 0 0 0 8px rgba(255,255,255,0.25);
+    }
+    #splashScreen h1 { font-size: 20px; margin: 0 0 6px 0; letter-spacing: 1px; }
+    #splashScreen p.sub { font-size: 12px; opacity: 0.85; margin: 0 0 28px 0; }
+    #splashScreen .spinner {
+      width: 28px; height: 28px; border: 3px solid rgba(255,255,255,0.4);
+      border-top-color: white; border-radius: 50%; animation: splash-spin 0.8s linear infinite;
+    }
+    @keyframes splash-spin { to { transform: rotate(360deg); } }
+    #splashScreen .splash-status { font-size: 12px; margin-top: 14px; opacity: 0.9; }
     .toggle-btn {
       flex: 1; border: 1px solid #ddd; background: white; padding: 10px 5px; font-size: 13px; 
       cursor: pointer; color: #666; border-radius: 5px; font-weight: bold; transition: 0.2s;
@@ -91,6 +109,14 @@
 </head>
 <body>
 
+  <div id="splashScreen">
+    <div class="splash-pin"></div>
+    <h1>イライラハザードマップ</h1>
+    <p class="sub">(仮) 錦糸町エリア</p>
+    <div class="spinner"></div>
+    <div class="splash-status" id="splashStatus">現在地を確認しています...</div>
+  </div>
+
   <div id="toast"></div>
   
   <div id="helpModal">
@@ -169,6 +195,12 @@
     let currentMode = 'recent'; 
     let lastData = []; // 🌟直近取得したデータ全件。モヤタップ時の周辺統計に使う
 
+    // 🌟起動時スプラッシュ制御用のフラグ
+    let mapReady = false;
+    let locationChecked = false;
+    let initialUserLocation = null; // 位置情報が取れた場合、ここに{lat,lng}を保持
+    let locationWasDenied = false;
+
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
       if (liff.isLoggedIn()) {
         liff.getProfile().then(profile => { userId = profile.userId; });
@@ -176,6 +208,56 @@
         liff.login();
       }
     }).catch(err => console.error('LIFF初期化失敗:', err));
+
+    // 🌟起動直後、地図の準備と並行して位置情報を確認する
+    requestInitialLocation();
+    // 🌟万一位置情報の確認がいつまでも終わらない場合の保険(8秒でタイムアウト)
+    setTimeout(() => {
+      if (!locationChecked) {
+        locationChecked = true;
+        tryHideSplash();
+      }
+    }, 8000);
+
+    function requestInitialLocation() {
+      if (!navigator.geolocation) {
+        locationChecked = true;
+        tryHideSplash();
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          initialUserLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+          locationChecked = true;
+          tryHideSplash();
+        },
+        function(error) {
+          if (error.code === 1) {
+            locationWasDenied = true; // 拒否された場合、スプラッシュを閉じた後にヘルプを見せる
+          }
+          locationChecked = true;
+          tryHideSplash();
+        },
+        { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+      );
+    }
+
+    // 🌟地図の準備・位置情報の確認、両方が終わってからスプラッシュを閉じる
+    function tryHideSplash() {
+      if (!mapReady || !locationChecked) return;
+
+      const splash = document.getElementById('splashScreen');
+      splash.style.display = 'none';
+
+      if (initialUserLocation && map) {
+        map.panTo(initialUserLocation);
+        map.setZoom(17);
+      }
+
+      if (locationWasDenied) {
+        document.getElementById('helpModal').style.display = 'flex';
+      }
+    }
 
     async function initMap() {
       const kinshicho = { lat: 35.6966, lng: 139.8143 };
@@ -197,6 +279,9 @@
         if (currentMode !== 'moya') return;
         showAreaStats(e.latLng.lat(), e.latLng.lng());
       });
+
+      mapReady = true;
+      tryHideSplash();
     }
 
     function switchMode(mode) {
