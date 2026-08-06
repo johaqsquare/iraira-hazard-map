@@ -199,7 +199,6 @@
     let mapReady = false;
     let locationChecked = false;
     let initialUserLocation = null; // 位置情報が取れた場合、ここに{lat,lng}を保持
-    let locationWasDenied = false;
 
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
       if (liff.isLoggedIn()) {
@@ -211,13 +210,15 @@
 
     // 🌟起動直後、地図の準備と並行して位置情報を確認する
     requestInitialLocation();
-    // 🌟万一位置情報の確認がいつまでも終わらない場合の保険(8秒でタイムアウト)
+    // 🌟万一位置情報の確認がいつまでも終わらない場合の保険(15秒でタイムアウト)
+    //   下のgetCurrentPositionのtimeout(12秒)より長めに設定し、
+    //   GPSの初回取得に時間がかかるケースでも間に合うようにしている
     setTimeout(() => {
       if (!locationChecked) {
         locationChecked = true;
         tryHideSplash();
       }
-    }, 8000);
+    }, 15000);
 
     function requestInitialLocation() {
       if (!navigator.geolocation) {
@@ -232,13 +233,12 @@
           tryHideSplash();
         },
         function(error) {
-          if (error.code === 1) {
-            locationWasDenied = true; // 拒否された場合、スプラッシュを閉じた後にヘルプを見せる
-          }
+          // 🌟拒否・タイムアウトいずれの場合も、ここではエラー扱いにしない。
+          //   案内は tryHideSplash 側で控えめなトーストとして行う。
           locationChecked = true;
           tryHideSplash();
         },
-        { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
       );
     }
 
@@ -252,10 +252,11 @@
       if (initialUserLocation && map) {
         map.panTo(initialUserLocation);
         map.setZoom(17);
-      }
-
-      if (locationWasDenied) {
-        document.getElementById('helpModal').style.display = 'flex';
+      } else {
+        // 🌟位置情報が取得できなかった場合も、エラー扱いにはせず、
+        //   控えめなお知らせだけ出す(拒否理由の詳細案内は、実際に
+        //   報告しようとした時のエラーハンドリング側で行う)
+        showToast('現在の位置情報は取得できていません');
       }
     }
 
