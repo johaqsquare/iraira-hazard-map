@@ -199,6 +199,7 @@
     let mapReady = false;
     let locationChecked = false;
     let initialUserLocation = null; // 位置情報が取れた場合、ここに{lat,lng}を保持
+    let initialLocationErrorCode = null; // 🔧デバッグ用: 失敗した場合のエラーコードを保持
 
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
       if (liff.isLoggedIn()) {
