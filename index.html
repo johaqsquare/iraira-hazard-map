@@ -28,7 +28,17 @@
       border-top-color: white; border-radius: 50%; animation: splash-spin 0.8s linear infinite;
     }
     @keyframes splash-spin { to { transform: rotate(360deg); } }
-    #splashScreen .splash-status { font-size: 12px; margin-top: 14px; opacity: 0.9; }
+   #splashScreen .splash-status { font-size: 12px; margin-top: 14px; opacity: 0.9; }
+    #splashScreen .splash-desc { font-size: 12px; opacity: 0.85; margin: 0 0 20px 0; max-width: 260px; line-height: 1.5; }
+    #splashScreen #splashLocationBtn {
+      width: 220px; padding: 13px; font-size: 14px; font-weight: bold; border-radius: 24px;
+      border: none; background: white; color: #06C755; cursor: pointer;
+    }
+    #splashScreen #splashLocationBtn:disabled { opacity: 0.7; cursor: not-allowed; }
+    #splashScreen #splashSkipLink {
+      display: block; margin-top: 16px; font-size: 12px; color: white; opacity: 0.85;
+      text-decoration: underline;
+    }
     .toggle-btn {
       flex: 1; border: 1px solid #ddd; background: white; padding: 10px 5px; font-size: 13px; 
       cursor: pointer; color: #666; border-radius: 5px; font-weight: bold; transition: 0.2s;
@@ -109,12 +119,21 @@
 </head>
 <body>
 
-  <div id="splashScreen">
+<div id="splashScreen">
     <div class="splash-pin"></div>
     <h1>イライラハザードマップ</h1>
     <p class="sub">(仮) 錦糸町エリア</p>
-    <div class="spinner"></div>
-    <div class="splash-status" id="splashStatus">現在地を確認しています...</div>
+
+    <div id="splashLocationPrompt">
+      <p class="splash-desc">現在地周辺の報告を表示するために、位置情報を確認します。</p>
+      <button id="splashLocationBtn" onclick="onSplashLocationClick()">📍 現在地を確認する</button>
+      <a href="#" id="splashSkipLink" onclick="onSplashSkipClick(); return false;">スキップして地図を見る</a>
+    </div>
+
+    <div id="splashLoading" style="display:none;">
+      <div class="spinner"></div>
+      <div class="splash-status" id="splashStatus">現在地を確認しています...</div>
+    </div>
   </div>
 
   <div id="toast"></div>
@@ -197,9 +216,8 @@
 
     // 🌟起動時スプラッシュ制御用のフラグ
     let mapReady = false;
-    let locationChecked = false;
+    let locationChecked = false; // 🌟「タップして確認」or「スキップ」が押されたらtrueになる
     let initialUserLocation = null; // 位置情報が取れた場合、ここに{lat,lng}を保持
-    let initialLocationErrorCode = null; // 🔧デバッグ用: 失敗した場合のエラーコードを保持
 
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
       if (liff.isLoggedIn()) {
@@ -209,24 +227,26 @@
       }
     }).catch(err => console.error('LIFF初期化失敗:', err));
 
-    // 🌟起動直後、地図の準備と並行して位置情報を確認する
-    requestInitialLocation();
-    // 🌟万一位置情報の確認がいつまでも終わらない場合の保険(15秒でタイムアウト)
-    //   下のgetCurrentPositionのtimeout(12秒)より長めに設定し、
-    //   GPSの初回取得に時間がかかるケースでも間に合うようにしている
-    setTimeout(() => {
-      if (!locationChecked) {
-        locationChecked = true;
-        tryHideSplash();
-      }
-    }, 15000);
+    // 🌟ページ読み込み直後の自動的なgetCurrentPosition呼び出しは行わない。
+    //   LINEアプリ内ブラウザ(LIFF)では、ユーザー操作を伴わない自動呼び出しが
+    //   PERMISSION_DENIED(code:1)として即座に弾かれることが実機検証で判明したため、
+    //   「タップして現在地を確認する」ボタンをユーザーに押してもらう方式に変更した。
+    //   (地図自体はスキップしても閲覧可能)
 
-    function requestInitialLocation() {
+    // 🌟「現在地を確認する」ボタンが押された時の処理
+    function onSplashLocationClick() {
+      const btn = document.getElementById('splashLocationBtn');
+      btn.disabled = true;
+
+      document.getElementById('splashLocationPrompt').style.display = 'none';
+      document.getElementById('splashLoading').style.display = 'block';
+
       if (!navigator.geolocation) {
         locationChecked = true;
         tryHideSplash();
         return;
       }
+
       navigator.geolocation.getCurrentPosition(
         function(position) {
           initialUserLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
@@ -234,10 +254,8 @@
           tryHideSplash();
         },
         function(error) {
-          // 🔧デバッグ用: エラーコードとメッセージを記録・出力する
-          initialLocationErrorCode = error.code;
           console.error('初期位置情報エラー:', error.code, error.message);
-          // 🌟拒否・タイムアウトいずれの場合も、ここではエラー扱いにしない。
+          // 🌟ボタン起点でも拒否・タイムアウトの場合はエラー扱いにせず、
           //   案内は tryHideSplash 側で控えめなトーストとして行う。
           locationChecked = true;
           tryHideSplash();
@@ -246,7 +264,13 @@
       );
     }
 
-    // 🌟地図の準備・位置情報の確認、両方が終わってからスプラッシュを閉じる
+    // 🌟「スキップして地図を見る」が押された時の処理
+    function onSplashSkipClick() {
+      locationChecked = true;
+      tryHideSplash();
+    }
+
+    // 🌟地図の準備・位置情報の確認(ボタン操作 or スキップ)、両方が終わってからスプラッシュを閉じる
     function tryHideSplash() {
       if (!mapReady || !locationChecked) return;
 
@@ -257,9 +281,7 @@
         map.panTo(initialUserLocation);
         map.setZoom(17);
       } else {
-        // 🔧デバッグ用: 一時的にエラーコードをトーストに表示する
-        //   (原因特定できたら元の文言に戻す)
-        showToast('現在の位置情報は取得できていません (code:' + initialLocationErrorCode + ')');
+        showToast('現在の位置情報は取得できていません');
       }
     }
 
