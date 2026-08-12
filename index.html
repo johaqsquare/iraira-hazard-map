@@ -234,6 +234,9 @@
           tryHideSplash();
         },
         function(error) {
+          // 🔧デバッグ用: エラーコードとメッセージを記録・出力する
+          initialLocationErrorCode = error.code;
+          console.error('初期位置情報エラー:', error.code, error.message);
           // 🌟拒否・タイムアウトいずれの場合も、ここではエラー扱いにしない。
           //   案内は tryHideSplash 側で控えめなトーストとして行う。
           locationChecked = true;
