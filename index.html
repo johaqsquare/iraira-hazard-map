@@ -302,6 +302,27 @@
     .platform-icon-x { background: #000000; }
     .platform-icon-line { background: #06C755; font-size: 17px; }
     .platform-icon-facebook { background: #1877F2; font-family: Georgia, serif; font-style: italic; }
+    .link-share-btn {
+      width: 100%; margin-top: 12px; padding: 12px; border-radius: var(--radius-md);
+      background: rgba(31,42,40,0.05); border: 1px solid rgba(31,42,40,0.1);
+      color: var(--color-ink); font-weight: 700; font-size: 13px; cursor: pointer;
+      box-shadow: none; font-family: 'Zen Maru Gothic', 'Noto Sans JP', sans-serif;
+    }
+    .link-share-btn:active { transform: scale(0.98); }
+
+    .opinion-toggle-row { text-align: center; margin-top: 14px; }
+    .opinion-toggle-row a { font-size: 12px; color: var(--color-ink-soft); text-decoration: underline; }
+
+    #opinionForm { margin-top: 10px; }
+    #opinionForm textarea {
+      width: 100%; box-sizing: border-box; padding: 12px; border-radius: var(--radius-md);
+      border: 1px solid rgba(31,42,40,0.12); background: rgba(255,255,255,0.9);
+      font-family: 'Noto Sans JP', sans-serif; font-size: 13px; resize: none;
+    }
+    #opinionForm textarea:focus {
+      outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 4px rgba(6,199,85,0.15);
+    }
+    #opinionSubmitBtn { margin-top: 8px; }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -357,6 +378,16 @@
           <button class="share-platform-btn" onclick="selectSharePlatform('facebook')">
             <span class="platform-icon platform-icon-facebook">f</span>Facebook
           </button>
+        </div>
+
+        <button class="link-share-btn" onclick="shareLocationLink()">🔗 リンクで共有する</button>
+
+        <div class="opinion-toggle-row">
+          <a href="#" onclick="toggleOpinionForm(); return false;">📝 アプリへのご意見・ご要望はこちら</a>
+        </div>
+        <div id="opinionForm" style="display:none;">
+          <textarea id="opinionText" rows="3" placeholder="使いにくい点・欲しい機能など、なんでもどうぞ"></textarea>
+          <button id="opinionSubmitBtn" onclick="submitOpinion()">送信する</button>
         </div>
       </div>
 
@@ -427,6 +458,12 @@
     let locationChecked = false; // 🌟「タップして確認」or「スキップ」が押されたらtrueになる
     let initialUserLocation = null; // 位置情報が取れた場合、ここに{lat,lng}を保持
 
+    // 🌟リンク共有(?lat=...&lng=...)経由で開かれた場合、その地点を優先して表示する
+    const urlParams = new URLSearchParams(window.location.search);
+    const sharedLat = parseFloat(urlParams.get('lat'));
+    const sharedLng = parseFloat(urlParams.get('lng'));
+    const sharedLinkLocation = (!isNaN(sharedLat) && !isNaN(sharedLng)) ? { lat: sharedLat, lng: sharedLng } : null;
+
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
       if (liff.isLoggedIn()) {
         liff.getProfile().then(profile => { userId = profile.userId; });
@@ -485,7 +522,10 @@
       const splash = document.getElementById('splashScreen');
       splash.style.display = 'none';
 
-      if (initialUserLocation && map) {
+      if (sharedLinkLocation && map) {
+        map.panTo(sharedLinkLocation);
+        map.setZoom(18);
+      } else if (initialUserLocation && map) {
         map.panTo(initialUserLocation);
         map.setZoom(17);
       } else {
