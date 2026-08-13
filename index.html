@@ -232,6 +232,48 @@
     .share-action-btn { background: #06C755; color: white; margin-top: 0; }
     .share-action-btn.secondary { background: #fff; color: #333; border: 1px solid #ccc; }
     #shareModal .close-btn { background: #eee; color: #666; margin-top: 10px; padding: 10px; width: 100%; border: none; border-radius: 8px; }
+    /* InfoWindow中身の共通スタイル */
+    .iw-card { padding: 14px 4px 6px; width: 172px; font-family: 'Noto Sans JP', sans-serif; }
+    .iw-title {
+      font-family: 'Zen Maru Gothic', sans-serif; font-weight: 700; font-size: 15px;
+      color: var(--color-ink); margin-bottom: 3px;
+    }
+    .iw-time {
+      display: inline-flex; align-items: center; gap: 4px;
+      color: var(--color-ink-soft); font-size: 11px; margin-bottom: 12px;
+    }
+    .iw-divider { height: 1px; background: rgba(31,42,40,0.1); margin: 0 0 10px 0; }
+    .iw-question { font-size: 11px; font-weight: 700; color: var(--color-ink); margin-bottom: 7px; }
+    .iw-btn-row { display: flex; gap: 6px; }
+    .iw-fb-btn {
+      flex: 1; padding: 7px 0; border-radius: 999px; font-size: 12px; font-weight: 700;
+      cursor: pointer; background: rgba(255,255,255,0.6); transition: transform 0.15s ease;
+    }
+    .iw-fb-btn:active { transform: scale(0.95); }
+    .iw-fb-yes { border: 1.5px solid var(--color-primary); color: var(--color-primary-deep); }
+    .iw-fb-no { border: 1.5px solid var(--color-alert); color: #D93F3F; }
+    .iw-delete-row { margin-top: 10px; }
+    .iw-delete-btn {
+      width: 100%; padding: 7px 0; background: rgba(31,42,40,0.05); border: none;
+      color: var(--color-ink-soft); border-radius: 999px; font-size: 11px; cursor: pointer;
+    }
+
+    /* 周辺統計(モヤタップ時)の共通スタイル */
+    .iw-stats { padding: 12px 4px 6px; width: 208px; font-family: 'Noto Sans JP', sans-serif; }
+    .iw-stats-title {
+      font-family: 'Zen Maru Gothic', sans-serif; font-weight: 700; font-size: 13px;
+      color: var(--color-ink); margin-bottom: 10px;
+    }
+    .iw-rank-row { margin-bottom: 8px; }
+    .iw-rank-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--color-ink); }
+    .iw-rank-count { color: var(--color-ink-soft); font-size: 11px; }
+    .iw-rank-track { background: rgba(31,42,40,0.08); border-radius: 999px; height: 6px; margin-top: 4px; overflow: hidden; }
+    .iw-rank-fill {
+      height: 6px; border-radius: 999px;
+      background: linear-gradient(90deg, var(--color-alert), #FFB199);
+    }
+    .iw-stats-note { font-size: 10px; color: var(--color-ink-soft); margin-top: 6px; }
+    .iw-empty { padding: 10px 4px; font-size: 13px; color: var(--color-ink-soft); font-family: 'Noto Sans JP', sans-serif; }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -599,7 +641,7 @@
 
       if (nearby.length === 0) {
         const iw = new google.maps.InfoWindow({
-          content: '<div style="padding:6px; font-size:13px;">この付近には直近30日間の報告データがありません。</div>',
+          content: '<div class="iw-empty">この付近には直近30日間の報告データがありません。</div>',
           position: { lat: lat, lng: lng }
         });
         iw.open(map);
@@ -618,25 +660,24 @@
       const ranking = Object.entries(stats).sort((a, b) => b[1].energy - a[1].energy);
       const maxEnergy = ranking[0][1].energy;
 
-      let html = `<div style="padding:8px; width:200px;">
-        <div style="font-weight:bold; font-size:13px; margin-bottom:8px;">📊 この付近(半径${RADIUS_M}m)の傾向</div>`;
+      let html = `<div class="iw-stats">
+        <div class="iw-stats-title">📊 この付近(半径${RADIUS_M}m)の傾向</div>`;
 
       ranking.forEach(([category, s], i) => {
         const barWidth = Math.max(Math.round((s.energy / maxEnergy) * 100), 6);
         html += `
-          <div style="margin-bottom:7px;">
-            <div style="display:flex; justify-content:space-between; font-size:12px;">
+          <div class="iw-rank-row">
+            <div class="iw-rank-label">
               <span>${i + 1}. ${category}</span>
-              <span style="color:#666;">${s.count}件</span>
+              <span class="iw-rank-count">${s.count}件</span>
             </div>
-            <div style="background:#eee; border-radius:3px; height:6px; margin-top:3px;">
-              <div style="background:#ff4d4f; width:${barWidth}%; height:6px; border-radius:3px;"></div>
+            <div class="iw-rank-track">
+              <div class="iw-rank-fill" style="width:${barWidth}%;"></div>
             </div>
           </div>`;
       });
 
-      html += `<div style="font-size:10px; color:#999; margin-top:6px;">過去30日間の報告に基づく(新しい報告ほど強く反映)</div></div>`;
-
+      html += `<div class="iw-stats-note">過去30日間の報告に基づく(新しい報告ほど強く反映)</div></div>`;
       const iw = new google.maps.InfoWindow({ content: html, position: { lat: lat, lng: lng } });
       iw.open(map);
       activeInfoWindow = iw;
@@ -679,23 +720,22 @@
       const timeText = getTimeAgo(point.timestamp);
 
       let contentHtml = `
-        <div style="padding:5px; width: 160px;">
-          <div style="font-weight:bold; font-size:14px; margin-bottom:4px;">${point.category}</div>
-          <div style="color:#666; font-size:11px; margin-bottom:10px;">⌚ ${timeText}</div>
-          
-          <div style="border-top: 1px dashed #ccc; padding-top: 8px;">
-            <div style="font-size:11px; margin-bottom:5px; font-weight:bold; color:#333;">📍 位置は正確でしたか？</div>
-            <div style="display: flex; gap: 5px;">
-              <button onclick="sendFeedback(${point.index}, 'YES')" style="flex:1; padding:6px; background:#fff; border:1px solid #06C755; color:#06C755; border-radius:4px; font-size:12px; cursor:pointer;">はい</button>
-              <button onclick="sendFeedback(${point.index}, 'NO')" style="flex:1; padding:6px; background:#fff; border:1px solid #ff4d4f; color:#ff4d4f; border-radius:4px; font-size:12px; cursor:pointer;">いいえ</button>
-            </div>
+        <div class="iw-card">
+          <div class="iw-title">${point.category}</div>
+          <div class="iw-time">⌚ ${timeText}</div>
+
+          <div class="iw-divider"></div>
+          <div class="iw-question">📍 位置は正確でしたか？</div>
+          <div class="iw-btn-row">
+            <button class="iw-fb-btn iw-fb-yes" onclick="sendFeedback(${point.index}, 'YES')">はい</button>
+            <button class="iw-fb-btn iw-fb-no" onclick="sendFeedback(${point.index}, 'NO')">いいえ</button>
           </div>
       `;
 
       if (isMine) {
         contentHtml += `
-          <div style="margin-top: 10px;">
-            <button onclick="deletePin(${point.index}, '${point.userId}')" style="width:100%; padding:6px; background:#f0f0f0; border:none; color:#666; border-radius:4px; font-size:11px; cursor:pointer;">🗑️ この報告を削除する</button>
+          <div class="iw-delete-row">
+            <button class="iw-delete-btn" onclick="deletePin(${point.index}, '${point.userId}')">🗑️ この報告を削除する</button>
           </div>
         `;
       }
