@@ -473,12 +473,18 @@
     const sharedLinkLocation = (!isNaN(sharedLat) && !isNaN(sharedLng)) ? { lat: sharedLat, lng: sharedLng } : null;
 
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
-      if (liff.isLoggedIn()) {
-        liff.getProfile().then(profile => { userId = profile.userId; });
-      } else {
-        liff.login();
-      }
-    }).catch(err => console.error('LIFF初期化失敗:', err));
+  console.log('LIFF初期化成功。ログイン状態:', liff.isLoggedIn());
+  if (liff.isLoggedIn()) {
+    liff.getProfile().then(profile => {
+      userId = profile.userId;
+      console.log('プロフィール取得成功。userId:', userId);
+    }).catch(err => {
+      console.error('プロフィール取得失敗:', err);
+    });
+  } else {
+    liff.login();
+  }
+}).catch(err => console.error('LIFF初期化失敗:', err));
 
     // 🌟ページ読み込み直後の自動的なgetCurrentPosition呼び出しは行わない。
     //   LINEアプリ内ブラウザ(LIFF)では、ユーザー操作を伴わない自動呼び出しが
