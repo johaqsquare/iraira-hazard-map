@@ -202,7 +202,6 @@
       max-height: 85vh; overflow-y: auto;
       box-shadow: var(--shadow-soft); border: 1px solid rgba(255,255,255,0.6);
     }
-    }
     #shareModal h3 { margin: 0 0 6px 0; font-size: 16px; color: #333; }
     #shareModal p.desc { font-size: 12px; color: #888; margin: 0 0 14px 0; }
     .format-btn {
@@ -323,6 +322,14 @@
       outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 4px rgba(6,199,85,0.15);
     }
     #opinionSubmitBtn { margin-top: 8px; }
+
+    .modal-back-btn {
+      width: auto; padding: 0; margin: 0 0 12px 0; background: none; border: none;
+      color: var(--color-ink-soft); font-size: 12px; font-weight: 700;
+      display: flex; align-items: center; gap: 3px; cursor: pointer;
+      font-family: 'Noto Sans JP', sans-serif; box-shadow: none;
+    }
+    .modal-back-btn:active { transform: none; opacity: 0.6; }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -392,6 +399,7 @@
       </div>
 
       <div id="shareStepFormat" style="display:none;">
+        <button class="modal-back-btn" onclick="backToShareStepDone()">← 戻る</button>
         <h3>見せ方を選んでください</h3>
         <p class="desc">あとで変更もできます。</p>
         <button class="format-btn" data-emoji="📋" onclick="requestShareImage('A')"><span>情報提供求む<small>掲示板のポスター風</small></span></button>
@@ -999,11 +1007,78 @@
       document.getElementById('shareModal').style.display = 'flex';
     }
 
-    // 🌟 投稿完了画面でSNSアイコンが選ばれた時の処理。フォーマット選択画面へ進む
+      // 🌟 投稿完了画面でSNSアイコンが選ばれた時の処理。フォーマット選択画面へ進む
     function selectSharePlatform(platform) {
       pendingSharePlatform = platform;
       document.getElementById('shareStepDone').style.display = 'none';
       document.getElementById('shareStepFormat').style.display = 'block';
+    }
+
+    // 🌟 フォーマット選択画面から、SNS選択画面(投稿完了画面)に戻る処理
+    //   (誤タップでSNSを選んでしまった場合の救済)
+    function backToShareStepDone() {
+      pendingSharePlatform = null;
+      document.getElementById('shareStepFormat').style.display = 'none';
+      document.getElementById('shareStepDone').style.display = 'block';
+    }
+
+    // 🌟 報告地点を地図上で見せる、画像なしのシンプルなリンク共有
+    function shareLocationLink() {
+      if (!pendingShareData) return;
+      const url = 'https://liff.line.me/2010604774-3Szn0qI6?lat=' + pendingShareData.lat + '&lng=' + pendingShareData.lng;
+      const shareTitle = pendingShareData.category + 'の報告地点 | イライラハザードマップ';
+
+      // 🌟スマホのOS標準共有シートが使える場合はそちらを優先(LINE/メモ帳/コピーなど選択肢が広い)
+      if (navigator.share) {
+        navigator.share({ title: shareTitle, url: url }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(url)
+          .then(() => showToast('リンクをコピーしました'))
+          .catch(() => showToast('コピーに失敗しました。長押しでURLを選択してコピーしてください。'));
+      }
+    }
+
+    // 🌟 ご意見フォームの開閉
+    function toggleOpinionForm() {
+      const form = document.getElementById('opinionForm');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // 🌟 ご意見の送信
+    function submitOpinion() {
+      const textarea = document.getElementById('opinionText');
+      const text = textarea.value.trim();
+      if (!text) {
+        showToast('ご意見の内容を入力してください。');
+        return;
+      }
+
+      const btn = document.getElementById('opinionSubmitBtn');
+      btn.disabled = true;
+      btn.classList.add('is-loading');
+      btn.innerText = '送信中...';
+
+      const url = GAS_URL + '?action=opinion&userId=' + encodeURIComponent(userId) + '&text=' + encodeURIComponent(text);
+      fetch(url)
+        .then(res => res.json())
+        .then((result) => {
+          btn.disabled = false;
+          btn.classList.remove('is-loading');
+          btn.innerText = '送信する';
+          if (result.success) {
+            showToast('ご意見ありがとうございました！');
+            textarea.value = '';
+            document.getElementById('opinionForm').style.display = 'none';
+          } else {
+            showToast('送信に失敗しました: ' + (result.error || '不明なエラー'));
+          }
+        })
+        .catch(() => {
+          btn.disabled = false;
+          btn.classList.remove('is-loading');
+          btn.innerText = '送信する';
+          showToast('通信エラーが発生しました。');
+        });
     }
 
     function closeShareModal() {
