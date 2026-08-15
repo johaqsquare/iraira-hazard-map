@@ -154,17 +154,39 @@
       border: 2.5px solid rgba(6,199,85,0.25); border-top-color: var(--color-primary);
     }
     
-    #toast {
-      position: absolute; top: -50px; left: 50%; transform: translateX(-50%);
-      background: rgba(31,42,40,0.88);
-      backdrop-filter: var(--blur-amt); -webkit-backdrop-filter: var(--blur-amt);
-      color: white; padding: 11px 22px;
-      border-radius: 999px; font-size: 13px; font-weight: 500; z-index: 3000;
-      transition: top 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-      box-shadow: var(--shadow-soft);
-      max-width: 85%; text-align: center;
+    #messageOverlay {
+      position: fixed; inset: 0; z-index: 5000;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(31,42,40,0); pointer-events: none;
+      transition: background 0.25s ease;
     }
-    #toast.show { top: 20px; }
+    #messageOverlay.show { background: rgba(31,42,40,0.18); pointer-events: auto; }
+
+    #messageBox {
+      background: var(--color-glass-strong);
+      backdrop-filter: var(--blur-amt); -webkit-backdrop-filter: var(--blur-amt);
+      border: 1px solid rgba(255,255,255,0.6);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-soft);
+      padding: 26px 24px; max-width: 260px; text-align: center;
+      transform: scale(0.9) translateY(6px); opacity: 0;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
+    }
+    #messageOverlay.show #messageBox { transform: scale(1) translateY(0); opacity: 1; }
+
+    .msg-icon {
+      width: 46px; height: 46px; border-radius: 50%; margin: 0 auto 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: 900;
+    }
+    .msg-icon.success { background: linear-gradient(135deg, rgba(6,199,85,0.18), rgba(6,199,85,0.06)); color: var(--color-primary-deep); }
+    .msg-icon.error { background: linear-gradient(135deg, rgba(255,92,92,0.18), rgba(255,92,92,0.06)); color: #D93F3F; }
+    .msg-icon.info { background: rgba(31,42,40,0.06); color: var(--color-ink-soft); }
+
+    #messageText {
+      font-size: 14px; line-height: 1.6; color: var(--color-ink);
+      font-family: 'Noto Sans JP', sans-serif; font-weight: 500;
+    }
 
     #legend {
       position: absolute; bottom: 10px; left: 10px;
@@ -352,7 +374,12 @@
     </div>
   </div>
 
-  <div id="toast"></div>
+ <div id="messageOverlay" onclick="hideMessageBox()">
+    <div id="messageBox">
+      <div class="msg-icon" id="msgIcon"></div>
+      <div id="messageText"></div>
+    </div>
+  </div>
   
   <div id="helpModal">
     <div class="modal-content">
@@ -561,7 +588,7 @@
         map.panTo(initialUserLocation);
         map.setZoom(17);
       } else {
-        showToast('位置情報をご確認いただけませんでした');
+        showToast('位置情報をご確認いただけませんでした', 'info');
       }
     }
 
@@ -635,7 +662,7 @@
 
         if (data.error) {
           console.error('サーバーエラー:', data.error);
-          showToast('データの取得中に問題が発生しました。時間をおいて再度お試しください。');
+          showToast('データの取得中に問題が発生しました。時間をおいて再度お試しください。', 'error');
           return false;
         }
 
@@ -673,7 +700,7 @@
 
         } catch (error) {
         console.error('データ取得エラー:', error);
-        showToast('通信状態が不安定なようです。通信環境をご確認のうえ、再度お試しください。');
+        showToast('通信状態が不安定なようです。通信環境をご確認のうえ、再度お試しください。', 'error');
         return false;
       }
     }
@@ -948,14 +975,14 @@
             .then(res => res.json())
             .then(async (result) => {
             if (result.success) {
-                showToast('ご報告ありがとうございました！');
+                showToast('ご報告ありがとうございました！', 'success');
                 switchMode('recent');
                 await refreshMapData();
                 map.panTo({ lat: lat, lng: lng });
                 openShareModal(lat, lng, category); // 🌟報告完了後、SNSシェアの導線を開く
               } else {
                 console.error('報告エラー:', result.error || result.reason);
-                showToast('報告の送信に失敗しました。お手数ですが、もう一度お試しください。');
+                showToast('報告の送信に失敗しました。お手数ですが、もう一度お試しください。', 'error');
               }
               btn.disabled = false;
               btn.classList.remove('is-loading');
@@ -963,7 +990,7 @@
             })
               .catch(error => {
               console.error('通信エラー:', error);
-              showToast('通信状態が不安定なようです。通信環境をご確認のうえ、もう一度お試しください。');
+              showToast('通信状態が不安定なようです。通信環境をご確認のうえ、もう一度お試しください。', 'error');
               btn.disabled = false;
               btn.classList.remove('is-loading');
               btn.innerText = '現在地を取得して報告する';
@@ -991,7 +1018,7 @@
         .then(res => res.json())
         .then((result) => {
           if (result.success) {
-            showToast(answer === 'YES' ? 'フィードバックをありがとうございます！' : 'ズレのご報告、ありがとうございます。');
+            showToast(answer === 'YES' ? 'フィードバックをありがとうございます！' : '参考にさせていただきます。', 'success');
           } else {
             showToast('フィードバックの送信に失敗しました。もう一度お試しください。');
           }
@@ -1007,7 +1034,7 @@
           .then(res => res.json())
           .then(async (result) => {
             if (result.success) {
-              showToast('報告を削除いたしました。');
+              showToast('報告を削除しました。', 'success');
               await refreshMapData();
             } else {
               console.error('削除エラー:', result.reason);
@@ -1018,11 +1045,31 @@
       }
     }
 
-    function showToast(message) {
-      const toast = document.getElementById('toast');
-      toast.innerText = message;
-      toast.classList.add('show');
-      setTimeout(() => { toast.classList.remove('show'); }, 3000);
+    let messageHideTimer = null;
+
+    // 🌟 type: 'success'(緑チェック) / 'error'(赤!) / 'info'(既定・グレー)
+    //   タップで早めに閉じることもできる(#messageOverlayのonclick)
+    function showToast(message, type) {
+      const overlay = document.getElementById('messageOverlay');
+      const icon = document.getElementById('msgIcon');
+      const text = document.getElementById('messageText');
+
+      const resolvedType = type || 'info';
+      const iconMap = { success: '✓', error: '!', info: 'i' };
+
+      icon.className = 'msg-icon ' + resolvedType;
+      icon.innerText = iconMap[resolvedType] || iconMap.info;
+      text.innerText = message;
+
+      overlay.classList.add('show');
+
+      clearTimeout(messageHideTimer);
+      messageHideTimer = setTimeout(hideMessageBox, 2800);
+    }
+
+    function hideMessageBox() {
+      document.getElementById('messageOverlay').classList.remove('show');
+      clearTimeout(messageHideTimer);
     }
 
     // 🌟 ここから、報告完了後のSNSシェア機能
@@ -1099,7 +1146,7 @@
           btn.classList.remove('is-loading');
           btn.innerText = '送信する';
           if (result.success) {
-            showToast('ご意見をお寄せいただき、ありがとうございました！');
+            showToast('貴重なご意見をお寄せいただき、ありがとうございます！', 'success');
             textarea.value = '';
             document.getElementById('opinionForm').style.display = 'none';
           } else {
