@@ -371,6 +371,59 @@
       height: 10px; border-radius: 999px; width: 0%;
       background: linear-gradient(90deg, var(--color-primary), var(--color-primary-deep));
     }
+    .iw-loading {
+      display: flex; align-items: center; justify-content: center;
+      padding: 26px 4px; width: 172px;
+    }
+    .iw-spinner {
+      width: 22px; height: 22px; border: 2.5px solid rgba(6,199,85,0.2);
+      border-top-color: var(--color-primary); border-radius: 50%;
+      animation: btn-spin 0.7s linear infinite;
+    }
+
+    .iw-thanks {
+      padding: 18px 4px; width: 172px; text-align: center;
+      font-family: 'Noto Sans JP', sans-serif;
+    }
+    .iw-thanks-icon {
+      width: 34px; height: 34px; margin: 0 auto 8px; border-radius: 50%;
+      background: linear-gradient(135deg, rgba(6,199,85,0.18), rgba(6,199,85,0.06));
+      color: var(--color-primary-deep);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; font-weight: 900;
+    }
+    .iw-thanks-text { font-size: 12px; line-height: 1.6; color: var(--color-ink); }
+    .iw-thanks.iw-thanks-error .iw-thanks-icon {
+      background: linear-gradient(135deg, rgba(255,92,92,0.18), rgba(255,92,92,0.06));
+      color: #D93F3F;
+    }
+    #confirmModal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(31,42,40,0.35); z-index: 4500; align-items: center; justify-content: center;
+    }
+    .confirm-content {
+      width: 82%; max-width: 300px; text-align: center; padding: 26px 22px;
+    }
+    .confirm-icon {
+      width: 46px; height: 46px; margin: 0 auto 14px; border-radius: 50%;
+      background: linear-gradient(135deg, rgba(255,92,92,0.18), rgba(255,92,92,0.06));
+      display: flex; align-items: center; justify-content: center; font-size: 19px;
+    }
+    #confirmMessage {
+      font-size: 14px; line-height: 1.6; color: var(--color-ink); margin: 0 0 20px 0;
+    }
+    .confirm-btn-row { display: flex; gap: 8px; }
+    .confirm-cancel-btn, .confirm-delete-btn {
+      flex: 1; margin: 0; padding: 12px; border-radius: var(--radius-md);
+      font-size: 13px; font-weight: 700; box-shadow: none;
+    }
+    .confirm-cancel-btn {
+      background: rgba(31,42,40,0.06); color: var(--color-ink-soft); border: none;
+    }
+    .confirm-delete-btn {
+      background: linear-gradient(135deg, var(--color-alert), #E14545); color: white; border: none;
+      box-shadow: 0 8px 20px rgba(255,92,92,0.3);
+    }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -411,6 +464,17 @@
         <p style="margin:0;"><strong>🤖 Androidの場合</strong><br>設定 ＞ 位置情報 ＞ アプリの権限 ＞ LINE（またはChrome） ＞ <strong>「正確な位置情報を使用」</strong>をオン</p>
       </div>
       <button class="close-btn" onclick="document.getElementById('helpModal').style.display='none'">閉じる</button>
+    </div>
+  </div>
+
+  <div id="confirmModal">
+    <div class="modal-content confirm-content">
+      <div class="confirm-icon">🗑️</div>
+      <p id="confirmMessage"></p>
+      <div class="confirm-btn-row">
+        <button class="confirm-cancel-btn" onclick="closeConfirmModal(false)">キャンセル</button>
+        <button class="confirm-delete-btn" onclick="closeConfirmModal(true)">削除する</button>
+      </div>
     </div>
   </div>
 
@@ -1044,41 +1108,72 @@
     }
 
     function sendFeedback(pointIndex, answer) {
-      if (activeInfoWindow) activeInfoWindow.close();
+      if (!activeInfoWindow) return;
+      const iw = activeInfoWindow; // 🌟通信中に他の吹き出しに切り替わっても、この吹き出し自身を確実に操作するため固定しておく
+
+      // 🌟ボタンを押した瞬間、吹き出しの中身をローディング表示に差し替える
+      iw.setContent('<div class="iw-loading"><div class="iw-spinner"></div></div>');
+
       const url = GAS_URL + '?action=feedback&index=' + pointIndex + '&answer=' + answer;
       fetch(url)
         .then(res => res.json())
         .then((result) => {
           if (result.success) {
-            showToast(answer === 'YES' ? 'フィードバックをありがとうございます！' : '参考にさせていただきます。', 'success');
+            const msg = answer === 'YES'
+              ? 'フィードバックを<br>ありがとうございます！'
+              : 'ズレのご報告、<br>ありがとうございます。';
+            iw.setContent('<div class="iw-thanks"><div class="iw-thanks-icon">✓</div><div class="iw-thanks-text">' + msg + '</div></div>');
           } else {
-            showToast('フィードバックの送信に失敗しました。もう一度お試しください。');
+            iw.setContent('<div class="iw-thanks iw-thanks-error"><div class="iw-thanks-icon">!</div><div class="iw-thanks-text">送信に失敗しました。<br>もう一度お試しください。</div></div>');
+          }
+          setTimeout(() => { iw.close(); }, 1800);
+        })
+        .catch(() => {
+          iw.setContent('<div class="iw-thanks iw-thanks-error"><div class="iw-thanks-icon">!</div><div class="iw-thanks-text">通信状態が不安定なようです。<br>もう一度お試しください。</div></div>');
+          setTimeout(() => { iw.close(); }, 1800);
+        });
+    }
+
+    async function deletePin(pointIndex, pointUserId) {
+      const confirmed = await showConfirmModal('この報告を削除します。よろしいですか？');
+      if (!confirmed) return;
+
+      if (activeInfoWindow) activeInfoWindow.close();
+      const url = GAS_URL + '?action=delete&index=' + pointIndex + '&userId=' + encodeURIComponent(pointUserId);
+      fetch(url)
+        .then(res => res.json())
+        .then(async (result) => {
+          if (result.success) {
+            showToast('報告を削除いたしました。');
+            await refreshMapData();
+          } else {
+            console.error('削除エラー:', result.reason);
+            showToast('削除できませんでした。もう一度お試しください。');
           }
         })
         .catch(() => showToast('通信状態が不安定なようです。もう一度お試しください。'));
     }
 
-    function deletePin(pointIndex, pointUserId) {
-        if (confirm('この報告を削除します。よろしいですか？')) {
-        if (activeInfoWindow) activeInfoWindow.close();
-        const url = GAS_URL + '?action=delete&index=' + pointIndex + '&userId=' + encodeURIComponent(pointUserId);
-        fetch(url)
-          .then(res => res.json())
-          .then(async (result) => {
-            if (result.success) {
-              showToast('報告を削除しました。', 'success');
-              await refreshMapData();
-            } else {
-              console.error('削除エラー:', result.reason);
-              showToast('削除できませんでした。もう一度お試しください。');
-            }
-          })
-          .catch(() => showToast('通信状態が不安定なようです。もう一度お試しください。'));
-      }
-    }
-
     let messageHideTimer = null;
 
+    // 🌟 ブラウザ標準のconfirm()の代わりに使う、アプリ内の確認モーダル。
+    //   Promiseで結果(true=削除する/false=キャンセル)を返すので、
+    //   await showConfirmModal(...) の形で呼び出せる。
+    let confirmResolver = null;
+
+    function showConfirmModal(message) {
+      document.getElementById('confirmMessage').innerText = message;
+      document.getElementById('confirmModal').style.display = 'flex';
+      return new Promise((resolve) => { confirmResolver = resolve; });
+    }
+
+    function closeConfirmModal(result) {
+      document.getElementById('confirmModal').style.display = 'none';
+      if (confirmResolver) {
+        confirmResolver(result);
+        confirmResolver = null;
+      }
+    }
     // 🌟 type: 'success'(緑チェック) / 'error'(赤!) / 'info'(既定・グレー)
     //   タップで早めに閉じることもできる(#messageOverlayのonclick)
     function showToast(message, type) {
