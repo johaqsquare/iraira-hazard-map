@@ -472,11 +472,13 @@
     const sharedLng = parseFloat(urlParams.get('lng'));
     const sharedLinkLocation = (!isNaN(sharedLat) && !isNaN(sharedLng)) ? { lat: sharedLat, lng: sharedLng } : null;
 
+   let liffChecked = false; // 🌟ログイン確認(プロフィール取得 or ログイン処理への遷移)が完了したらtrue
+
     // 🌟LIFF初期化〜プロフィール取得までを1つのPromiseにまとめておく。
     //   ログインセッションが切れている場合、liff.login()がLINEの認証画面への
-    //   画面遷移を伴い、数秒かかることがある。この間にuserIdがGUEST_USERのまま
-    //   報告が送信されてしまう競合状態を防ぐため、報告処理側でこのPromiseの
-    //   完了を待ってから送信するようにする。
+    //   画面遷移を伴い、数秒かかることがある。この間、地図や凡例が
+    //   ログイン中の画面と重なって見えないよう、liffCheckedが立つまで
+    //   スプラッシュ画面を表示し続ける(tryHideSplash側で判定)。
     const liffReadyPromise = (async function() {
       try {
         await liff.init({ liffId: '2010604774-3Szn0qI6' });
@@ -485,6 +487,7 @@
         if (!liff.isLoggedIn()) {
           // 🌟liff.login()は画面遷移(LINEの認証画面へリダイレクト)を伴うため、
           //   この関数の続きは実行されない(ページが離脱するため)。
+          //   liffCheckedはtrueにしない=スプラッシュ画面が表示されたまま遷移する。
           liff.login();
           return;
         }
@@ -494,10 +497,13 @@
         console.log('プロフィール取得成功。userId:', userId);
       } catch (err) {
         console.error('LIFF初期化/プロフィール取得エラー:', err);
-        // 🌟失敗してもuserIdはGUEST_USERのまま。報告自体は続行できるようにする。
+        // 🌟失敗してもuserIdはGUEST_USERのまま。アプリの利用自体は続行できるようにする。
+      } finally {
+        liffChecked = true;
+        tryHideSplash();
       }
     })();
-
+    
     // 🌟ページ読み込み直後の自動的なgetCurrentPosition呼び出しは行わない。
     //   LINEアプリ内ブラウザ(LIFF)では、ユーザー操作を伴わない自動呼び出しが
     //   PERMISSION_DENIED(code:1)として即座に弾かれることが実機検証で判明したため、
@@ -542,8 +548,8 @@
     }
 
     // 🌟地図の準備・位置情報の確認(ボタン操作 or スキップ)、両方が終わってからスプラッシュを閉じる
-    function tryHideSplash() {
-      if (!mapReady || !locationChecked) return;
+     function tryHideSplash() {
+      if (!mapReady || !locationChecked || !liffChecked) return; 
 
       const splash = document.getElementById('splashScreen');
       splash.style.display = 'none';
