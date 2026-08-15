@@ -352,6 +352,25 @@
       font-family: 'Noto Sans JP', sans-serif; box-shadow: none;
     }
     .modal-back-btn:active { transform: none; opacity: 0.6; }
+    .posting-icon {
+      width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 50%;
+      background: linear-gradient(135deg, rgba(6,199,85,0.18), rgba(6,199,85,0.06));
+      display: flex; align-items: center; justify-content: center; font-size: 22px;
+      animation: posting-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes posting-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+    #shareStepPosting h3 { text-align: center; margin-bottom: 20px; }
+
+    .posting-progress-track {
+      height: 10px; border-radius: 999px; background: rgba(31,42,40,0.08); overflow: hidden;
+    }
+    .posting-progress-fill {
+      height: 10px; border-radius: 999px; width: 0%;
+      background: linear-gradient(90deg, var(--color-primary), var(--color-primary-deep));
+    }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -398,10 +417,18 @@
   <div id="shareModal">
     <div class="modal-content">
 
+      <div id="shareStepPosting" style="display:none;">
+        <div class="posting-icon">📍</div>
+        <h3>報告中...</h3>
+        <div class="posting-progress-track">
+          <div class="posting-progress-fill" id="postingProgressFill"></div>
+        </div>
+      </div>
+
       <div id="shareStepDone">
         <div class="share-done-icon">✅</div>
-        <h3>報告ありがとうございます！</h3>
-        <p class="desc">あなたの報告が、まちをちょっとだけ良くします。よければSNSでシェアしてください。</p>
+        <h3>報告を完了しました！</h3>
+        <p class="desc">ありがとうございます！<br>あなたの報告が、きっと街を良く変えていきます。<br>よろしければSNSのシェアもお願いします！</p>
         <div class="share-platform-row">
           <button class="share-platform-btn" onclick="selectSharePlatform('x')">
             <span class="platform-icon platform-icon-x">X</span>シェア
@@ -955,7 +982,10 @@
 
       if (!navigator.geolocation) {
         showToast('恐れ入りますが、ご利用の環境では位置情報を取得できないようです。');
-        btn.disabled = false; return;
+        btn.disabled = false;
+        btn.classList.remove('is-loading');
+        btn.innerText = '現在地を取得して報告する';
+        return;
       }
 
       navigator.geolocation.getCurrentPosition(
@@ -963,7 +993,14 @@
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
           const category = document.getElementById('category').value;
-          btn.innerText = '報告を送信しています...';
+
+          // 🌟位置情報が取れたら、ボタンはすぐ元に戻し、以降の「投稿中」の演出は
+          //   モーダル(進捗バー)側にバトンタッチする
+          btn.disabled = false;
+          btn.classList.remove('is-loading');
+          btn.innerText = '現在地を取得して報告する';
+          openPostingModal();
+
           const reportUrl = GAS_URL
             + '?action=report'
             + '&userId=' + encodeURIComponent(userId)
@@ -974,29 +1011,24 @@
           fetch(reportUrl)
             .then(res => res.json())
             .then(async (result) => {
-            if (result.success) {
-                showToast('ご報告ありがとうございました！', 'success');
+              if (result.success) {
                 switchMode('recent');
                 await refreshMapData();
                 map.panTo({ lat: lat, lng: lng });
-                openShareModal(lat, lng, category); // 🌟報告完了後、SNSシェアの導線を開く
+                finishPostingModal(lat, lng, category); // 🌟投稿中→完了画面へ、モーダル内で切り替える
               } else {
                 console.error('報告エラー:', result.error || result.reason);
-                showToast('報告の送信に失敗しました。お手数ですが、もう一度お試しください。', 'error');
+                closeShareModal();
+                showToast('報告の送信に失敗しました。お手数ですが、もう一度お試しください。');
               }
-              btn.disabled = false;
-              btn.classList.remove('is-loading');
-              btn.innerText = '現在地を取得して報告する';
             })
-              .catch(error => {
+            .catch(error => {
               console.error('通信エラー:', error);
-              showToast('通信状態が不安定なようです。通信環境をご確認のうえ、もう一度お試しください。', 'error');
-              btn.disabled = false;
-              btn.classList.remove('is-loading');
-              btn.innerText = '現在地を取得して報告する';
+              closeShareModal();
+              showToast('通信状態が不安定なようです。通信環境をご確認のうえ、もう一度お試しください。');
             });
         },
-          function(error) {
+        function(error) {
           if (error.code === 1) {
             document.getElementById('helpModal').style.display = 'flex';
             showToast('位置情報の利用を許可していただくと、報告を送信できます。');
@@ -1085,6 +1117,39 @@
       document.getElementById('shareStepResult').style.display = 'none';
       document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
       document.getElementById('shareModal').style.display = 'flex';
+    }
+
+    // 🌟 位置情報取得完了と同時に呼ばれる。投稿中モーダルを開き、
+    //   進捗バーを「じわっと85%まで」伸ばす(通信が実際に終わるまでの体感待ち時間の演出)
+    function openPostingModal() {
+      document.getElementById('shareStepPosting').style.display = 'block';
+      document.getElementById('shareStepDone').style.display = 'none';
+      document.getElementById('shareStepFormat').style.display = 'none';
+      document.getElementById('shareStepResult').style.display = 'none';
+      document.getElementById('shareModal').style.display = 'flex';
+
+      const fill = document.getElementById('postingProgressFill');
+      fill.style.transition = 'none';
+      fill.style.width = '0%';
+      void fill.offsetWidth; // 🌟強制リフローさせ、直後のtransitionを確実に効かせる
+      fill.style.transition = 'width 1.6s cubic-bezier(0.22, 0.61, 0.36, 1)';
+      fill.style.width = '85%';
+    }
+
+    // 🌟 通信が成功したら呼ばれる。進捗バーを100%まで一気に満たしてから、
+    //   同じモーダルウィンドウの中で完了画面に切り替える
+    function finishPostingModal(lat, lng, category) {
+      const fill = document.getElementById('postingProgressFill');
+      fill.style.transition = 'width 0.3s ease';
+      fill.style.width = '100%';
+
+      setTimeout(() => {
+        pendingShareData = { lat: lat, lng: lng, category: category };
+        pendingSharePlatform = null;
+        document.getElementById('shareStepPosting').style.display = 'none';
+        document.getElementById('shareStepDone').style.display = 'block';
+        document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
+      }, 350);
     }
 
       // 🌟 投稿完了画面でSNSアイコンが選ばれた時の処理。フォーマット選択画面へ進む
