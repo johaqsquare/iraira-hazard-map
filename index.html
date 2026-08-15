@@ -474,17 +474,24 @@
 
     liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
   console.log('LIFF初期化成功。ログイン状態:', liff.isLoggedIn());
+  showToast('🔧LIFF初期化OK ログイン:' + liff.isLoggedIn());
   if (liff.isLoggedIn()) {
     liff.getProfile().then(profile => {
       userId = profile.userId;
       console.log('プロフィール取得成功。userId:', userId);
+      showToast('🔧プロフィール取得成功: ' + userId);
     }).catch(err => {
       console.error('プロフィール取得失敗:', err);
+      showToast('🔧プロフィール取得失敗: ' + err.message);
     });
   } else {
+    showToast('🔧未ログイン状態。login()を呼びます');
     liff.login();
   }
-}).catch(err => console.error('LIFF初期化失敗:', err));
+}).catch(err => {
+  console.error('LIFF初期化失敗:', err);
+  showToast('🔧LIFF初期化失敗: ' + err.message);
+});
 
     // 🌟ページ読み込み直後の自動的なgetCurrentPosition呼び出しは行わない。
     //   LINEアプリ内ブラウザ(LIFF)では、ユーザー操作を伴わない自動呼び出しが
