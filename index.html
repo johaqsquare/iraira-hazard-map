@@ -966,29 +966,30 @@
         .then(res => res.json())
         .then((result) => {
           if (result.success) {
-            showToast(answer === 'YES' ? 'フィードバックありがとうございます！' : 'ズレの報告ありがとうございます。');
+            showToast(answer === 'YES' ? 'フィードバックをありがとうございます！' : 'ズレのご報告、ありがとうございます。');
           } else {
-            showToast('フィードバックの送信に失敗しました。');
+            showToast('フィードバックの送信に失敗しました。もう一度お試しください。');
           }
         })
-        .catch(() => showToast('通信エラーが発生しました。'));
+        .catch(() => showToast('通信状態が不安定なようです。もう一度お試しください。'));
     }
 
     function deletePin(pointIndex, pointUserId) {
-      if (confirm('本当にこの報告を削除しますか？')) {
+        if (confirm('この報告を削除します。よろしいですか？')) {
         if (activeInfoWindow) activeInfoWindow.close();
         const url = GAS_URL + '?action=delete&index=' + pointIndex + '&userId=' + encodeURIComponent(pointUserId);
         fetch(url)
           .then(res => res.json())
           .then(async (result) => {
             if (result.success) {
-              showToast('報告を削除しました。');
+              showToast('報告を削除いたしました。');
               await refreshMapData();
             } else {
-              showToast('削除に失敗しました: ' + (result.reason || '権限がありません'));
+              console.error('削除エラー:', result.reason);
+              showToast('削除できませんでした。もう一度お試しください。');
             }
           })
-          .catch(() => showToast('通信エラーが発生しました。'));
+          .catch(() => showToast('通信状態が不安定なようです。もう一度お試しください。'));
       }
     }
 
@@ -1038,10 +1039,10 @@
       // 🌟スマホのOS標準共有シートが使える場合はそちらを優先(LINE/メモ帳/コピーなど選択肢が広い)
       if (navigator.share) {
         navigator.share({ title: shareTitle, url: url }).catch(() => {});
-      } else {
+        } else {
         navigator.clipboard.writeText(url)
-          .then(() => showToast('リンクをコピーしました'))
-          .catch(() => showToast('コピーに失敗しました。長押しでURLを選択してコピーしてください。'));
+          .then(() => showToast('リンクをコピーいたしました'))
+          .catch(() => showToast('コピーに失敗しました。恐れ入りますが、リンクを長押ししてコピーしてください。'));
       }
     }
 
@@ -1056,14 +1057,14 @@
       const textarea = document.getElementById('opinionText');
       const text = textarea.value.trim();
       if (!text) {
-        showToast('ご意見の内容を入力してください。');
+        showToast('ご意見の内容をご入力ください。');
         return;
       }
 
       const btn = document.getElementById('opinionSubmitBtn');
       btn.disabled = true;
       btn.classList.add('is-loading');
-      btn.innerText = '送信中...';
+      btn.innerText = '送信しています...';
 
       const url = GAS_URL + '?action=opinion&userId=' + encodeURIComponent(userId) + '&text=' + encodeURIComponent(text);
       fetch(url)
@@ -1073,18 +1074,19 @@
           btn.classList.remove('is-loading');
           btn.innerText = '送信する';
           if (result.success) {
-            showToast('ご意見ありがとうございました！');
+            showToast('ご意見をお寄せいただき、ありがとうございました！');
             textarea.value = '';
             document.getElementById('opinionForm').style.display = 'none';
           } else {
-            showToast('送信に失敗しました: ' + (result.error || '不明なエラー'));
+            console.error('ご意見送信エラー:', result.error);
+            showToast('送信に失敗しました。もう一度お試しください。');
           }
         })
         .catch(() => {
           btn.disabled = false;
           btn.classList.remove('is-loading');
           btn.innerText = '送信する';
-          showToast('通信エラーが発生しました。');
+          showToast('通信状態が不安定なようです。もう一度お試しください。');
         });
     }
 
@@ -1095,8 +1097,8 @@
     function requestShareImage(format) {
       if (!pendingShareData) return;
 
-      document.querySelectorAll('.format-btn').forEach(b => b.disabled = true);
-      showToast('画像を作成しています...');
+        document.querySelectorAll('.format-btn').forEach(b => b.disabled = true);
+        showToast('シェア画像を作成しています。少々お待ちください…');
 
       const url = GAS_URL
         + '?action=createShare'
@@ -1111,7 +1113,8 @@
           document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
 
           if (!result.success) {
-            showToast('画像の作成に失敗しました: ' + (result.error || '不明なエラー'));
+            console.error('シェア画像作成エラー:', result.error);
+            showToast('画像の作成に失敗しました。もう一度お試しください。');
             return;
           }
 
@@ -1144,13 +1147,13 @@
 
           document.getElementById('shareCopyBtn').onclick = () => {
             navigator.clipboard.writeText(result.shareUrl)
-              .then(() => showToast('リンクをコピーしました'))
-              .catch(() => showToast('コピーに失敗しました。長押しでURLを選択してコピーしてください。'));
+              .then(() => showToast('リンクをコピーいたしました'))
+              .catch(() => showToast('コピーに失敗しました。恐れ入りますが、リンクを長押ししてコピーしてください。'));
           };
         })
         .catch(() => {
           document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
-          showToast('通信エラーが発生しました。');
+          showToast('通信状態が不安定なようです。もう一度お試しください。');
         });
     }
   </script>
