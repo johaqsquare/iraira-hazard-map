@@ -903,6 +903,7 @@
     }
 
       function submitReport() {
+      showToast('🔧送信時のuserId: ' + userId);
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
       btn.classList.add('is-loading');
