@@ -472,26 +472,31 @@
     const sharedLng = parseFloat(urlParams.get('lng'));
     const sharedLinkLocation = (!isNaN(sharedLat) && !isNaN(sharedLng)) ? { lat: sharedLat, lng: sharedLng } : null;
 
-    liff.init({ liffId: '2010604774-3Szn0qI6' }).then(() => {
-  console.log('LIFF初期化成功。ログイン状態:', liff.isLoggedIn());
-  showToast('🔧LIFF初期化OK ログイン:' + liff.isLoggedIn());
-  if (liff.isLoggedIn()) {
-    liff.getProfile().then(profile => {
-      userId = profile.userId;
-      console.log('プロフィール取得成功。userId:', userId);
-      showToast('🔧プロフィール取得成功: ' + userId);
-    }).catch(err => {
-      console.error('プロフィール取得失敗:', err);
-      showToast('🔧プロフィール取得失敗: ' + err.message);
-    });
-  } else {
-    showToast('🔧未ログイン状態。login()を呼びます');
-    liff.login();
-  }
-}).catch(err => {
-  console.error('LIFF初期化失敗:', err);
-  showToast('🔧LIFF初期化失敗: ' + err.message);
-});
+    // 🌟LIFF初期化〜プロフィール取得までを1つのPromiseにまとめておく。
+    //   ログインセッションが切れている場合、liff.login()がLINEの認証画面への
+    //   画面遷移を伴い、数秒かかることがある。この間にuserIdがGUEST_USERのまま
+    //   報告が送信されてしまう競合状態を防ぐため、報告処理側でこのPromiseの
+    //   完了を待ってから送信するようにする。
+    const liffReadyPromise = (async function() {
+      try {
+        await liff.init({ liffId: '2010604774-3Szn0qI6' });
+        console.log('LIFF初期化成功。ログイン状態:', liff.isLoggedIn());
+
+        if (!liff.isLoggedIn()) {
+          // 🌟liff.login()は画面遷移(LINEの認証画面へリダイレクト)を伴うため、
+          //   この関数の続きは実行されない(ページが離脱するため)。
+          liff.login();
+          return;
+        }
+
+        const profile = await liff.getProfile();
+        userId = profile.userId;
+        console.log('プロフィール取得成功。userId:', userId);
+      } catch (err) {
+        console.error('LIFF初期化/プロフィール取得エラー:', err);
+        // 🌟失敗してもuserIdはGUEST_USERのまま。報告自体は続行できるようにする。
+      }
+    })();
 
     // 🌟ページ読み込み直後の自動的なgetCurrentPosition呼び出しは行わない。
     //   LINEアプリ内ブラウザ(LIFF)では、ユーザー操作を伴わない自動呼び出しが
@@ -902,11 +907,17 @@
       );
     }
 
-      function submitReport() {
-      showToast('🔧送信時のuserId: ' + userId);
+      async function submitReport() {
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
       btn.classList.add('is-loading');
+      btn.innerText = 'ユーザー情報を確認しています...';
+
+      // 🌟プロフィール取得(userIdの確定)が終わるまで、ここで待つ。
+      //   これにより、ログイン処理に時間がかかった場合でも
+      //   GUEST_USERのまま報告が送信されることを防ぐ。
+      await liffReadyPromise;
+
       btn.innerText = '現在地を確認しています...';
 
       if (!navigator.geolocation) {
