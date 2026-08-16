@@ -438,6 +438,26 @@
       cursor: pointer; background: rgba(6,199,85,0.08);
       color: var(--color-primary-deep); border: 1px solid rgba(6,199,85,0.25);
     }
+    .pin-burst { position: absolute; width: 0; height: 0; pointer-events: none; }
+    .pin-burst-ring {
+      position: absolute; left: 0; top: 0; width: 16px; height: 16px; margin: -8px 0 0 -8px;
+      border-radius: 50%; border: 2px solid var(--color-primary);
+      opacity: 0.9; animation: pin-burst-ring-anim 0.6s ease-out forwards;
+    }
+    @keyframes pin-burst-ring-anim {
+      0% { width: 16px; height: 16px; margin: -8px 0 0 -8px; opacity: 0.9; }
+      100% { width: 70px; height: 70px; margin: -35px 0 0 -35px; opacity: 0; }
+    }
+    .pin-burst-ray {
+      position: absolute; left: 0; top: 0; width: 3px; height: 14px; margin: -22px 0 0 -1.5px;
+      background: linear-gradient(180deg, var(--color-primary), rgba(6,199,85,0));
+      border-radius: 2px; transform-origin: 50% 22px;
+      opacity: 0; animation: pin-burst-ray-anim 0.55s ease-out forwards;
+    }
+    @keyframes pin-burst-ray-anim {
+      0% { opacity: 1; transform: rotate(var(--ray-angle)) translateY(0) scaleY(0.4); }
+      100% { opacity: 0; transform: rotate(var(--ray-angle)) translateY(-16px) scaleY(1); }
+    }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -816,6 +836,55 @@
     let moyaPulseRAF = null;
     let moyaPulseStart = null;
 
+    function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+    // 🌟 指定した地点(lat, lng)に、放射状の光のエフェクトを一瞬だけ表示する
+    function playPinBurstEffect(lat, lng) {
+      return new Promise((resolve) => {
+        function BurstOverlay() {}
+        BurstOverlay.prototype = new google.maps.OverlayView();
+
+        BurstOverlay.prototype.onAdd = function() {
+          const div = document.createElement('div');
+          div.className = 'pin-burst';
+
+          const ring = document.createElement('div');
+          ring.className = 'pin-burst-ring';
+          div.appendChild(ring);
+
+          const RAY_COUNT = 8;
+          for (let i = 0; i < RAY_COUNT; i++) {
+            const ray = document.createElement('div');
+            ray.className = 'pin-burst-ray';
+            ray.style.setProperty('--ray-angle', (i * (360 / RAY_COUNT)) + 'deg');
+            div.appendChild(ray);
+          }
+
+          this.div = div;
+          this.getPanes().overlayLayer.appendChild(div);
+        };
+
+        BurstOverlay.prototype.draw = function() {
+          const proj = this.getProjection();
+          const pos = proj.fromLatLngToDivPixel(new google.maps.LatLng(lat, lng));
+          this.div.style.left = pos.x + 'px';
+          this.div.style.top = pos.y + 'px';
+        };
+
+        BurstOverlay.prototype.onRemove = function() {
+          if (this.div && this.div.parentNode) this.div.parentNode.removeChild(this.div);
+          this.div = null;
+        };
+
+        const overlay = new BurstOverlay();
+        overlay.setMap(map);
+
+        setTimeout(() => {
+          overlay.setMap(null);
+          resolve();
+        }, 650);
+      });
+    }
     function renderMoya(data) {
       // 古い円(3層構造)を消す
       moyaCircles.forEach(g => { g.core.setMap(null); g.mid.setMap(null); g.outer.setMap(null); });
@@ -1093,14 +1162,25 @@
             + '&lat=' + lat
             + '&lng=' + lng;
 
-          fetch(reportUrl)
+            fetch(reportUrl)
             .then(res => res.json())
             .then(async (result) => {
               if (result.success) {
+                // 🌟進捗バーを100%まで満たしてから、一旦モーダルを閉じて地図を見せる
+                const fill = document.getElementById('postingProgressFill');
+                fill.style.transition = 'width 0.3s ease';
+                fill.style.width = '100%';
+                await wait(400);
+                document.getElementById('shareModal').style.display = 'none';
+
                 switchMode('recent');
-                await refreshMapData();
                 map.panTo({ lat: lat, lng: lng });
-                finishPostingModal(lat, lng, category); // 🌟投稿中→完了画面へ、モーダル内で切り替える
+                await refreshMapData(); // 🌟ここでピンがポトッと落ちる(既存のDROPアニメーション)のが見える
+
+                await wait(350); // 🌟ピンが着地するのを少し待ってから
+                await playPinBurstEffect(lat, lng); // 🌟着地点から放射状にピカッと光る
+
+                openShareModal(lat, lng, category); // 🌟完了画面を表示
               } else {
                 console.error('報告エラー:', result.error || result.reason);
                 closeShareModal();
@@ -1277,17 +1357,6 @@
       fill.style.width = '85%';
     }
 
-    // 🌟 通信が成功したら呼ばれる。進捗バーを100%まで一気に満たしてから、
-    //   同じモーダルウィンドウの中で完了画面に切り替える
-    function finishPostingModal(lat, lng, category) {
-      const fill = document.getElementById('postingProgressFill');
-      fill.style.transition = 'width 0.3s ease';
-      fill.style.width = '100%';
-
-      setTimeout(() => {
-        openShareModal(lat, lng, category); // 🌟mode省略時は「報告を完了しました！」の文言になる
-      }, 350);
-    }
 
       // 🌟 投稿完了画面でSNSアイコンが選ばれた時の処理。フォーマット選択画面へ進む
     function selectSharePlatform(platform) {
