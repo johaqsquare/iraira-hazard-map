@@ -303,7 +303,9 @@
     #shareStepDone h3 { text-align: center; }
     #shareStepDone p.desc { text-align: center; }
 
-    .share-platform-row { display: flex; gap: 8px; margin-top: 4px; }
+    .share-platform-row {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 4px;
+    }
     .share-platform-btn {
       flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
       padding: 14px 4px; margin: 0; border: 1px solid rgba(31,42,40,0.08);
@@ -323,6 +325,7 @@
     .platform-icon-x { background: #000000; }
     .platform-icon-line { background: #06C755; font-size: 17px; }
     .platform-icon-facebook { background: #1877F2; font-family: Georgia, serif; font-style: italic; }
+    .platform-icon-threads { background: #000000; font-size: 19px; font-weight: 900; }
     .link-share-btn {
       width: 100%; margin-top: 12px; padding: 12px; border-radius: var(--radius-md);
       background: rgba(31,42,40,0.05); border: 1px solid rgba(31,42,40,0.1);
@@ -402,7 +405,12 @@
       background: rgba(31,42,40,0.35); z-index: 4500; align-items: center; justify-content: center;
     }
     .confirm-content {
+      background: var(--color-glass-strong);
+      backdrop-filter: var(--blur-amt); -webkit-backdrop-filter: var(--blur-amt);
+      box-shadow: var(--shadow-soft); border: 1px solid rgba(255,255,255,0.6);
+      border-radius: var(--radius-lg);
       width: 82%; max-width: 300px; text-align: center; padding: 26px 22px;
+      box-sizing: border-box;
     }
     .confirm-icon {
       width: 46px; height: 46px; margin: 0 auto 14px; border-radius: 50%;
@@ -423,6 +431,12 @@
     .confirm-delete-btn {
       background: linear-gradient(135deg, var(--color-alert), #E14545); color: white; border: none;
       box-shadow: 0 8px 20px rgba(255,92,92,0.3);
+    }
+    .iw-share-row { margin-top: 8px; }
+    .iw-share-btn {
+      width: 100%; padding: 7px 0; border-radius: 999px; font-size: 11px; font-weight: 700;
+      cursor: pointer; background: rgba(6,199,85,0.08);
+      color: var(--color-primary-deep); border: 1px solid rgba(6,199,85,0.25);
     }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -495,7 +509,10 @@
         <p class="desc">ありがとうございます！<br>あなたの報告が、きっと街を良く変えていきます。<br>よろしければSNSのシェアもお願いします！</p>
         <div class="share-platform-row">
           <button class="share-platform-btn" onclick="selectSharePlatform('x')">
-            <span class="platform-icon platform-icon-x">X</span>シェア
+            <span class="platform-icon platform-icon-x">𝕏</span>X
+          </button>
+          <button class="share-platform-btn" onclick="selectSharePlatform('threads')">
+            <span class="platform-icon platform-icon-threads">@</span>Threads
           </button>
           <button class="share-platform-btn" onclick="selectSharePlatform('line')">
             <span class="platform-icon platform-icon-line">💬</span>LINE
@@ -968,6 +985,9 @@
             <button class="iw-fb-btn iw-fb-yes" onclick="sendFeedback(${point.index}, 'YES')">はい</button>
             <button class="iw-fb-btn iw-fb-no" onclick="sendFeedback(${point.index}, 'NO')">いいえ</button>
           </div>
+          <div class="iw-share-row">
+            <button class="iw-share-btn" onclick="shareExistingPin(${point.lat}, ${point.lng}, '${point.category}')">🔗 この報告をシェアする</button>
+          </div>
       `;
 
       if (isMine) {
@@ -980,7 +1000,8 @@
 
       contentHtml += `</div>`;
       const infoWindow = new google.maps.InfoWindow({ content: contentHtml });
-      
+      infoWindow.baseContent = contentHtml; // 🌟フィードバック送信後、この内容に復元するため保持しておく
+
       marker.addListener("click", () => {
         if (activeInfoWindow) activeInfoWindow.close();
         infoWindow.open(map, marker);
@@ -1126,11 +1147,17 @@
           } else {
             iw.setContent('<div class="iw-thanks iw-thanks-error"><div class="iw-thanks-icon">!</div><div class="iw-thanks-text">送信に失敗しました。<br>もう一度お試しください。</div></div>');
           }
-          setTimeout(() => { iw.close(); }, 1800);
+            setTimeout(() => {
+            iw.close();
+            iw.setContent(iw.baseContent); // 🌟次回タップ時に、また「はい/いいえ」を選べる元の状態に戻す
+          }, 3500);
         })
         .catch(() => {
           iw.setContent('<div class="iw-thanks iw-thanks-error"><div class="iw-thanks-icon">!</div><div class="iw-thanks-text">通信状態が不安定なようです。<br>もう一度お試しください。</div></div>');
-          setTimeout(() => { iw.close(); }, 1800);
+          setTimeout(() => {
+            iw.close();
+            iw.setContent(iw.baseContent);
+          }, 3500);
         });
     }
 
@@ -1203,15 +1230,34 @@
     let pendingShareData = null;     // 直前に報告した投稿の位置・カテゴリを一時保持
     let pendingSharePlatform = null; // 🌟ユーザーが選んだシェア先('x' / 'line' / 'facebook')
 
-    function openShareModal(lat, lng, category) {
+    function openShareModal(lat, lng, category, options) {
+      options = options || {};
       pendingShareData = { lat: lat, lng: lng, category: category };
       pendingSharePlatform = null;
 
+      // 🌟新規投稿直後か、既存ピンからの共有かで、見出し文言を出し分ける
+      const heading = document.querySelector('#shareStepDone h3');
+      const desc = document.querySelector('#shareStepDone p.desc');
+      if (options.mode === 'existing') {
+        heading.innerText = 'この報告をシェアする';
+        desc.innerHTML = 'よろしければSNSでシェアをお願いします！';
+      } else {
+        heading.innerText = '報告を完了しました！';
+        desc.innerHTML = 'ありがとうございます！<br>あなたの報告が、きっと街を良く変えていきます。<br>よろしければSNSのシェアもお願いします！';
+      }
+
+      document.getElementById('shareStepPosting').style.display = 'none';
       document.getElementById('shareStepDone').style.display = 'block';
       document.getElementById('shareStepFormat').style.display = 'none';
       document.getElementById('shareStepResult').style.display = 'none';
       document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
       document.getElementById('shareModal').style.display = 'flex';
+    }
+
+    // 🌟 既存ピンの吹き出しにある「シェアする」ボタンから呼ばれる
+    function shareExistingPin(lat, lng, category) {
+      if (activeInfoWindow) activeInfoWindow.close();
+      openShareModal(lat, lng, category, { mode: 'existing' });
     }
 
     // 🌟 位置情報取得完了と同時に呼ばれる。投稿中モーダルを開き、
@@ -1239,11 +1285,7 @@
       fill.style.width = '100%';
 
       setTimeout(() => {
-        pendingShareData = { lat: lat, lng: lng, category: category };
-        pendingSharePlatform = null;
-        document.getElementById('shareStepPosting').style.display = 'none';
-        document.getElementById('shareStepDone').style.display = 'block';
-        document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
+        openShareModal(lat, lng, category); // 🌟mode省略時は「報告を完了しました！」の文言になる
       }, 350);
     }
 
@@ -1365,10 +1407,16 @@
             actionBtn.onclick = () => {
               window.open('https://social-plugins.line.me/lineit/share?url=' + shareUrlEncoded, '_blank');
             };
-          } else if (pendingSharePlatform === 'facebook') {
+            } else if (pendingSharePlatform === 'facebook') {
             actionBtn.innerText = '📘 Facebookでシェア';
             actionBtn.onclick = () => {
               window.open('https://www.facebook.com/sharer/sharer.php?u=' + shareUrlEncoded, '_blank');
+            };
+          } else if (pendingSharePlatform === 'threads') {
+            actionBtn.innerText = '@ Threadsでシェア';
+            actionBtn.onclick = () => {
+              const threadsText = encodeURIComponent(pendingShareData.category + 'を目撃 #イライラハザードマップ ' + result.shareUrl);
+              window.open('https://www.threads.net/intent/post?text=' + threadsText, '_blank');
             };
           } else {
             actionBtn.innerText = '🕊️ Xでシェア';
