@@ -439,24 +439,17 @@
       color: var(--color-primary-deep); border: 1px solid rgba(6,199,85,0.25);
     }
     .pin-burst { position: absolute; width: 0; height: 0; pointer-events: none; }
-    .pin-burst-ring {
-      position: absolute; left: 0; top: 0; width: 16px; height: 16px; margin: -8px 0 0 -8px;
-      border-radius: 50%; border: 2px solid var(--color-primary);
-      opacity: 0.9; animation: pin-burst-ring-anim 0.6s ease-out forwards;
-    }
-    @keyframes pin-burst-ring-anim {
-      0% { width: 16px; height: 16px; margin: -8px 0 0 -8px; opacity: 0.9; }
-      100% { width: 70px; height: 70px; margin: -35px 0 0 -35px; opacity: 0; }
-    }
     .pin-burst-ray {
-      position: absolute; left: 0; top: 0; width: 3px; height: 14px; margin: -22px 0 0 -1.5px;
-      background: linear-gradient(180deg, var(--color-primary), rgba(6,199,85,0));
-      border-radius: 2px; transform-origin: 50% 22px;
-      opacity: 0; animation: pin-burst-ray-anim 0.55s ease-out forwards;
+      position: absolute; left: 0; top: 0; width: 3px; height: 30px; margin: -36px 0 0 -1.5px;
+      background: linear-gradient(180deg, #ff4d4f, rgba(255,77,79,0));
+      border-radius: 2px; transform-origin: 50% 100%; /* 🌟回転の軸をピン(近い側)に固定 */
+      animation: pin-burst-ray-anim 0.9s ease-out forwards;
     }
     @keyframes pin-burst-ray-anim {
-      0% { opacity: 1; transform: rotate(var(--ray-angle)) translateY(0) scaleY(0.4); }
-      100% { opacity: 0; transform: rotate(var(--ray-angle)) translateY(-16px) scaleY(1); }
+      0%   { clip-path: inset(100% 0 0% 0); }  /* 🌟全て隠れている */
+      40%  { clip-path: inset(0% 0 0% 0); }    /* 🌟近い側→遠い側へ伸びきる */
+      55%  { clip-path: inset(0% 0 0% 0); }    /* 🌟一瞬、全線が見えている状態を保持 */
+      100% { clip-path: inset(0% 0 100% 0); }  /* 🌟近い側→遠い側へ向けて消えていく */
     }
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -848,15 +841,11 @@
           const div = document.createElement('div');
           div.className = 'pin-burst';
 
-          const ring = document.createElement('div');
-          ring.className = 'pin-burst-ring';
-          div.appendChild(ring);
-
           const RAY_COUNT = 8;
           for (let i = 0; i < RAY_COUNT; i++) {
             const ray = document.createElement('div');
             ray.className = 'pin-burst-ray';
-            ray.style.setProperty('--ray-angle', (i * (360 / RAY_COUNT)) + 'deg');
+            ray.style.transform = 'rotate(' + (i * (360 / RAY_COUNT)) + 'deg)';
             div.appendChild(ray);
           }
 
@@ -882,7 +871,7 @@
         setTimeout(() => {
           overlay.setMap(null);
           resolve();
-        }, 650);
+        }, 900);
       });
     }
     function renderMoya(data) {
@@ -1165,22 +1154,27 @@
             fetch(reportUrl)
             .then(res => res.json())
             .then(async (result) => {
-              if (result.success) {
-                // 🌟進捗バーを100%まで満たしてから、一旦モーダルを閉じて地図を見せる
+            if (result.success) {
+                // 🌟進捗バーを100%まで満たすのと同時に、地図データの再取得(通信)を
+                //   先読みで開始しておく。これにより、モーダルを閉じる頃には
+                //   通信がある程度進んでおり、ピンが立つまでの体感待ち時間が縮まる。
                 const fill = document.getElementById('postingProgressFill');
                 fill.style.transition = 'width 0.3s ease';
                 fill.style.width = '100%';
-                await wait(400);
+                const refreshPromise = refreshMapData();
+
+                await wait(200); // 🌟一呼吸だけ置いてモーダルを閉じる
                 document.getElementById('shareModal').style.display = 'none';
 
                 switchMode('recent');
                 map.panTo({ lat: lat, lng: lng });
-                await refreshMapData(); // 🌟ここでピンがポトッと落ちる(既存のDROPアニメーション)のが見える
+                await refreshPromise; // 🌟ここでピンがポトッと落ちる(既存のDROPアニメーション)のが見える
 
-                await wait(350); // 🌟ピンが着地するのを少し待ってから
+                await wait(200); // 🌟ピンが着地するのを少し待ってから
                 await playPinBurstEffect(lat, lng); // 🌟着地点から放射状にピカッと光る
 
-                openShareModal(lat, lng, category); // 🌟完了画面を表示
+                await wait(500); // 🌟余韻を持たせてから完了画面を表示
+                openShareModal(lat, lng, category);
               } else {
                 console.error('報告エラー:', result.error || result.reason);
                 closeShareModal();
