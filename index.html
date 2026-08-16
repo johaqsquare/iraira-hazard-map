@@ -147,12 +147,19 @@
     }
     @keyframes btn-spin { to { transform: rotate(360deg); } }
 
-    #viewLocationBtn.is-loading {
-      background: rgba(6,199,85,0.08);
+    .map-fab-btn {
+      position: absolute; bottom: 110px; right: 14px; z-index: 1500;
+      width: 46px; height: 46px; margin: 0; padding: 0; border-radius: 50%;
+      background: var(--color-glass-strong);
+      backdrop-filter: var(--blur-amt); -webkit-backdrop-filter: var(--blur-amt);
+      border: 1px solid rgba(255,255,255,0.6);
+      box-shadow: var(--shadow-soft);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--color-ink); cursor: pointer;
+      transition: transform 0.15s ease;
     }
-    #viewLocationBtn.is-loading::before {
-      border: 2.5px solid rgba(6,199,85,0.25); border-top-color: var(--color-primary);
-    }
+    .map-fab-btn:active { transform: scale(0.92); }
+    .map-fab-btn.is-loading svg { animation: btn-spin 0.7s linear infinite; }
     
     #messageOverlay {
       position: fixed; inset: 0; z-index: 5000;
@@ -575,6 +582,15 @@
   <div id="map-container">
     <div id="map"></div>
     <div id="moya-hint">💡 モヤをタップすると、その付近の傾向がわかります</div>
+    <button id="locateMeBtn" class="map-fab-btn" onclick="locateMe()" title="現在地に移動">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <line x1="12" y1="2" x2="12" y2="5"></line>
+        <line x1="12" y1="19" x2="12" y2="22"></line>
+        <line x1="2" y1="12" x2="5" y2="12"></line>
+        <line x1="19" y1="12" x2="22" y2="12"></line>
+      </svg>
+    </button>
     <div id="legend">
       <div class="legend-item"><span class="legend-dot" style="background:#06C755;"></span>自分の報告</div>
       <div class="legend-item"><span class="legend-dot" style="background:#ff4d4f;"></span>他の人の報告</div>
@@ -591,7 +607,6 @@
       <option value="ペットの糞">ペットの糞</option>
     </select>
     <button id="submitBtn" onclick="submitReport()">現在地を取得して報告する</button>
-    <button id="viewLocationBtn" onclick="viewMyLocation()" style="background:#fff; color:#06C755; border:1px solid #06C755; margin-top:8px;">📍 現在地を見るだけ(投稿しない)</button>
     
     <div style="text-align: center; margin-top: 15px;">
       <a href="#" onclick="document.getElementById('helpModal').style.display='flex'; return false;" style="font-size: 12px; color: #0066cc; text-decoration: underline;">📍 ピンの位置が大きくずれる場合はこちら</a>
@@ -613,6 +628,7 @@
     let mapReady = false;
     let locationChecked = false; // 🌟「タップして確認」or「スキップ」が押されたらtrueになる
     let initialUserLocation = null; // 位置情報が取れた場合、ここに{lat,lng}を保持
+    let initialUserAccuracy = null; // 🌟現在地マーカー(ハロー)の大きさに使う精度情報
 
     // 🌟リンク共有(?lat=...&lng=...)経由で開かれた場合、その地点を優先して表示する
     const urlParams = new URLSearchParams(window.location.search);
@@ -672,9 +688,10 @@
         return;
       }
 
-      navigator.geolocation.getCurrentPosition(
+        navigator.geolocation.getCurrentPosition(
         function(position) {
           initialUserLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+          initialUserAccuracy = position.coords.accuracy;
           locationChecked = true;
           tryHideSplash();
         },
@@ -706,6 +723,7 @@
         map.panTo(sharedLinkLocation);
         map.setZoom(18);
       } else if (initialUserLocation && map) {
+        updateUserLocationMarker(initialUserLocation.lat, initialUserLocation.lng, initialUserAccuracy);
         map.panTo(initialUserLocation);
         map.setZoom(17);
       } else {
@@ -753,7 +771,39 @@
 
       applyView(); 
     }
+    let userLocationMarker = null;
+    let userLocationHalo = null;
 
+    // 🌟自分の現在地を示す「青い点」を地図上に表示/更新する。
+    //   Googleマップ本体の自分位置マーカーを模した見た目(青丸+白縁+薄いハロー)。
+    function updateUserLocationMarker(lat, lng, accuracy) {
+      const position = { lat: lat, lng: lng };
+      const haloRadius = Math.min(accuracy || 30, 80);
+
+      if (userLocationHalo) {
+        userLocationHalo.setCenter(position);
+        userLocationHalo.setRadius(haloRadius);
+      } else {
+        userLocationHalo = new google.maps.Circle({
+          strokeWeight: 0, fillColor: '#4285F4', fillOpacity: 0.15,
+          map: map, center: position, radius: haloRadius, clickable: false
+        });
+      }
+
+      if (userLocationMarker) {
+        userLocationMarker.setPosition(position);
+      } else {
+        userLocationMarker = new google.maps.Marker({
+          position: position, map: map, clickable: false, zIndex: 999,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE, scale: 8,
+            fillColor: '#4285F4', fillOpacity: 1,
+            strokeColor: '#ffffff', strokeWeight: 3
+          }
+        });
+      }
+    }
+    
     function applyView() {
       // モヤ(3層の円)の表示切り替え
       moyaCircles.forEach(g => {
@@ -1069,19 +1119,16 @@
       markerList.push({ marker: marker, data: point });
     }
 
-    // 🌟投稿せず、現在地に地図を移動するだけの機能(見るだけの人向け)
-    function viewMyLocation() {
-        const btn = document.getElementById('viewLocationBtn');
+      // 🌟地図上のFABボタンから呼ばれる。現在地を取得し、青い点を更新した上でその地点へ地図を移動する
+    function locateMe() {
+      const btn = document.getElementById('locateMeBtn');
       btn.disabled = true;
       btn.classList.add('is-loading');
-      const originalText = btn.innerText;
-      btn.innerText = '現在地を確認しています...';
 
       if (!navigator.geolocation) {
         showToast('恐れ入りますが、ご利用の環境では位置情報を取得できないようです。');
         btn.disabled = false;
         btn.classList.remove('is-loading');
-        btn.innerText = originalText;
         return;
       }
 
@@ -1089,13 +1136,13 @@
         function(position) {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
+          updateUserLocationMarker(lat, lng, position.coords.accuracy);
           map.panTo({ lat: lat, lng: lng });
           map.setZoom(17);
           btn.disabled = false;
           btn.classList.remove('is-loading');
-          btn.innerText = originalText;
         },
-          function(error) {
+        function(error) {
           if (error.code === 1) {
             document.getElementById('helpModal').style.display = 'flex';
             showToast('位置情報の利用を許可していただくと、現在地を表示できます。');
@@ -1104,12 +1151,11 @@
           }
           btn.disabled = false;
           btn.classList.remove('is-loading');
-          btn.innerText = originalText;
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
-
+    
       async function submitReport() {
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
