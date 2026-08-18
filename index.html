@@ -1409,28 +1409,33 @@
     }
         let postingStageTimer = null;
 
-    // 🌟 進捗バーを指定時間かけて85%まで伸ばしつつ、ステータス文言を
-    //   一定間隔で順番に切り替えていく(実際の通信進捗とは連動していない演出)
-    function startPostingStages(stageTexts, totalDurationMs) {
+        function startPostingStages(stageTexts, totalDurationMs) {
       clearInterval(postingStageTimer);
       const fill = document.getElementById('postingProgressFill');
       const statusText = document.getElementById('postingStatusText');
 
+      // 🌟前半(80%)は想定時間で85%まで一気に進め、
+      //   最後のステータス文言に入ったら、そこから先はゆっくり
+      //   95%まで動き続ける(実際の完了時間が想定より延びても、
+      //   画面が完全に静止して見えないようにするため)
       fill.style.transition = 'none';
       fill.style.width = '0%';
       void fill.offsetWidth;
-      fill.style.transition = 'width ' + (totalDurationMs / 1000) + 's linear';
+      fill.style.transition = 'width ' + ((totalDurationMs * 0.8) / 1000) + 's linear';
       fill.style.width = '85%';
 
       let idx = 0;
       statusText.innerText = stageTexts[0];
-      const stepTime = totalDurationMs / stageTexts.length;
+      const stepTime = (totalDurationMs * 0.8) / stageTexts.length;
       postingStageTimer = setInterval(() => {
         idx++;
         if (idx < stageTexts.length) {
           statusText.innerText = stageTexts[idx];
         } else {
           clearInterval(postingStageTimer);
+          // 🌟最後のステージに入ったら、残り時間で85%→95%までゆっくり伸ばし続ける
+          fill.style.transition = 'width ' + ((totalDurationMs * 0.6) / 1000) + 's linear';
+          fill.style.width = '95%';
         }
       }, stepTime);
     }
@@ -1541,7 +1546,29 @@
       document.getElementById('shareModal').style.display = 'none';
     }
 
-        function requestShareImage(format) {
+        // 🌟 画像の読み込みに失敗した場合、公開反映のタイムラグが原因である可能性が高いため、
+    //   少し間を空けて自動的に再読み込みを試みる(最大4回、2秒間隔)
+    function attachImageRetry(imgElementId, originalUrl) {
+      let retryCount = 0;
+      const maxRetries = 4;
+
+      const img = document.getElementById(imgElementId);
+      if (!img) return;
+
+      img.onerror = function() {
+        if (retryCount >= maxRetries) {
+          img.onerror = null;
+          return; // 🌟それでも失敗する場合は、壊れたアイコンのまま諦める(リンクは別途表示されているため実害は小さい)
+        }
+        retryCount++;
+        setTimeout(() => {
+          // 🌟キャッシュされた失敗結果を避けるため、末尾にタイムスタンプを付けて再取得する
+          img.src = originalUrl + '?retry=' + new Date().getTime();
+        }, 2000);
+      };
+    }
+    
+    function requestShareImage(format) {
       if (!pendingShareData) return;
 
       document.querySelectorAll('.format-btn').forEach(b => b.disabled = true);
@@ -1553,7 +1580,7 @@
       document.getElementById('shareStepPosting').style.display = 'block';
       startPostingStages(
         ['画像を作成しています…', '最終調整をしています…', 'もう少しで完成します…'],
-        11000 // 🌟目安時間。実際の所要時間とズレていても、体感が心地よければ問題ない
+        16000 // 🌟実際の所要時間の実態(15秒前後)に合わせて調整
       );
 
       const url = GAS_URL
@@ -1582,7 +1609,8 @@
             document.getElementById('shareStepPosting').style.display = 'none';
             document.getElementById('shareStepResult').style.display = 'block';
             document.getElementById('shareResult').innerHTML =
-              '<img src="' + result.imageUrl + '" alt="シェア画像">';
+              '<img id="shareResultImg" src="' + result.imageUrl + '" alt="シェア画像">';
+            attachImageRetry('shareResultImg', result.imageUrl);
 
           const shareText = encodeURIComponent(pendingShareData.category + 'を目撃 #イライラハザードマップ');
           const shareUrlEncoded = encodeURIComponent(result.shareUrl);
