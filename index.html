@@ -527,7 +527,7 @@
     <div class="modal-content">
 
        <div id="shareStepPosting" style="display:none;">
-        <div class="posting-icon">📍</div>
+        <div class="posting-icon" id="postingIcon">📍</div>
         <h3 id="postingHeadline">報告中...</h3>
         <div class="posting-progress-track">
           <div class="posting-progress-fill" id="postingProgressFill"></div>
@@ -1450,6 +1450,7 @@
     // 🌟 位置情報取得完了と同時に呼ばれる。投稿中モーダルを開き、
     //   進捗バーを「じわっと85%まで」伸ばす(通信が実際に終わるまでの体感待ち時間の演出)
     function openPostingModal() {
+      document.getElementById('postingIcon').innerText = '📍';
       document.getElementById('postingHeadline').innerText = '報告中...';
       document.getElementById('postingStatusText').innerText = '';
       document.getElementById('shareStepPosting').style.display = 'block';
@@ -1548,9 +1549,9 @@
 
         // 🌟 画像の読み込みに失敗した場合、公開反映のタイムラグが原因である可能性が高いため、
     //   少し間を空けて自動的に再読み込みを試みる(最大4回、2秒間隔)
-    function attachImageRetry(imgElementId, originalUrl) {
+   function attachImageRetry(imgElementId, originalUrl) {
       let retryCount = 0;
-      const maxRetries = 4;
+      const maxRetries = 6; // 🌟バックエンド側の待機を削った分、フロント側で少し手厚く受け止める
 
       const img = document.getElementById(imgElementId);
       if (!img) return;
@@ -1575,6 +1576,7 @@
 
       // 🌟報告投稿と同じ「投稿中」の枠を再利用し、画像作成用の見出し+
       //   移り変わるステータス文言で進行中であることを見せる
+      document.getElementById('postingIcon').innerText = '🎨';
       document.getElementById('postingHeadline').innerText = '画像を作成しています';
       document.getElementById('shareStepFormat').style.display = 'none';
       document.getElementById('shareStepPosting').style.display = 'block';
