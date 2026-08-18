@@ -311,7 +311,7 @@
     #shareStepDone p.desc { text-align: center; }
 
     .share-platform-row {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px;
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 4px;
     }
     .share-platform-btn {
       flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -388,6 +388,9 @@
     .posting-progress-fill {
       height: 10px; border-radius: 999px; width: 0%;
       background: linear-gradient(90deg, var(--color-primary), var(--color-primary-deep));
+    }
+    .posting-status-text {
+      margin-top: 10px; font-size: 12px; color: var(--color-ink-soft); text-align: center;
     }
     .iw-loading {
       display: flex; align-items: center; justify-content: center;
@@ -523,12 +526,13 @@
   <div id="shareModal">
     <div class="modal-content">
 
-      <div id="shareStepPosting" style="display:none;">
+       <div id="shareStepPosting" style="display:none;">
         <div class="posting-icon">📍</div>
-        <h3>報告中...</h3>
+        <h3 id="postingHeadline">報告中...</h3>
         <div class="posting-progress-track">
           <div class="posting-progress-fill" id="postingProgressFill"></div>
         </div>
+        <div class="posting-status-text" id="postingStatusText"></div>
       </div>
 
       <div id="shareStepDone">
@@ -549,6 +553,9 @@
                 <path fill="white" d="M770.35,500.35c-1.35-156.85-86.39-251.37-230.02-251.37-95.87,0-176.5,43.36-218.85,112.47l92.82,64.71c24.05-37.94,57.25-69.45,118.23-69.45,68.77,0,104.34,38.28,114.5,109.42-33.2-5.08-66.4-7.79-100.61-7.79-185.65,0-273.05,84.02-273.05,195.13s87.4,179.55,216.14,179.55c141.27,0,225.62-95.19,260.18-213.09,35.91,16.26,60.64,54.2,60.64,111.12,0,152.45-175.82,235.45-324.88,235.45-219.86,0-363.5-144.32-363.5-379.08,0-287.62,190.05-471.91,445.48-471.91,171.42,0,256.11,75.21,313.7,176.16l94.86-66.4C913.31,94.5,773.4,1,563.36,1,228.65,1,1,238.48,1,583.01c0,315.06,222.91,497.99,488.51,497.99,219.52,0,441.42-128.05,441.42-347.24,0-114.5-65.72-190.39-160.58-233.41h0ZM485.44,718.85c-48.44,0-91.13-23.04-91.13-65.38,0-66.74,81.98-87.06,162.27-87.06,30.49,0,60.3,2.03,86.72,7.79-18.97,86.72-75.21,144.66-157.87,144.66h0Z"/>
               </svg>
             </span>Threads
+          </button>
+           <button class="share-platform-btn" onclick="selectSharePlatform('line')">
+            <span class="platform-icon platform-icon-line"></span>LINE
           </button>
           <button class="share-platform-btn" onclick="selectSharePlatform('facebook')">
             <span class="platform-icon platform-icon-facebook"></span>Facebook
@@ -649,13 +656,21 @@
     const sharedLng = parseFloat(urlParams.get('lng'));
     const sharedLinkLocation = (!isNaN(sharedLat) && !isNaN(sharedLng)) ? { lat: sharedLat, lng: sharedLng } : null;
 
-   let liffChecked = false; // 🌟ログイン確認(プロフィール取得 or ログイン処理への遷移)が完了したらtrue
+     let liffChecked = false; // 🌟ログイン確認(プロフィール取得 or ログイン処理への遷移)が完了したらtrue
 
-    // 🌟LIFF初期化〜プロフィール取得までを1つのPromiseにまとめておく。
-    //   ログインセッションが切れている場合、liff.login()がLINEの認証画面への
-    //   画面遷移を伴い、数秒かかることがある。この間、地図や凡例が
-    //   ログイン中の画面と重なって見えないよう、liffCheckedが立つまで
-    //   スプラッシュ画面を表示し続ける(tryHideSplash側で判定)。
+    // 🌟保険:LIFFのログイン確認があまりに長引いた場合、8秒で強制的に
+    //   「確認済み」扱いにしてスプラッシュ画面を閉じる。これにより、
+    //   万一ログイン確認が応答なく固まっても、アプリ自体が使えなくなることを防ぐ。
+    //   (この場合userIdはGUEST_USERのままになるが、後から通常のログイン確認が
+    //   遅れて完了すれば、その時点で正しいuserIdに更新される)
+    setTimeout(() => {
+      if (!liffChecked) {
+        console.error('LIFF確認がタイムアウトしました。ゲスト状態のまま進行します。');
+        liffChecked = true;
+        tryHideSplash();
+      }
+    }, 8000);
+
     const liffReadyPromise = (async function() {
       try {
         await liff.init({ liffId: '2010604774-3Szn0qI6' });
@@ -1392,10 +1407,46 @@
       if (activeInfoWindow) activeInfoWindow.close();
       openShareModal(lat, lng, category, { mode: 'existing' });
     }
+        let postingStageTimer = null;
 
+    // 🌟 進捗バーを指定時間かけて85%まで伸ばしつつ、ステータス文言を
+    //   一定間隔で順番に切り替えていく(実際の通信進捗とは連動していない演出)
+    function startPostingStages(stageTexts, totalDurationMs) {
+      clearInterval(postingStageTimer);
+      const fill = document.getElementById('postingProgressFill');
+      const statusText = document.getElementById('postingStatusText');
+
+      fill.style.transition = 'none';
+      fill.style.width = '0%';
+      void fill.offsetWidth;
+      fill.style.transition = 'width ' + (totalDurationMs / 1000) + 's linear';
+      fill.style.width = '85%';
+
+      let idx = 0;
+      statusText.innerText = stageTexts[0];
+      const stepTime = totalDurationMs / stageTexts.length;
+      postingStageTimer = setInterval(() => {
+        idx++;
+        if (idx < stageTexts.length) {
+          statusText.innerText = stageTexts[idx];
+        } else {
+          clearInterval(postingStageTimer);
+        }
+      }, stepTime);
+    }
+
+    function finishPostingStages() {
+      clearInterval(postingStageTimer);
+      const fill = document.getElementById('postingProgressFill');
+      fill.style.transition = 'width 0.3s ease';
+      fill.style.width = '100%';
+    }
+    
     // 🌟 位置情報取得完了と同時に呼ばれる。投稿中モーダルを開き、
     //   進捗バーを「じわっと85%まで」伸ばす(通信が実際に終わるまでの体感待ち時間の演出)
     function openPostingModal() {
+      document.getElementById('postingHeadline').innerText = '報告中...';
+      document.getElementById('postingStatusText').innerText = '';
       document.getElementById('shareStepPosting').style.display = 'block';
       document.getElementById('shareStepDone').style.display = 'none';
       document.getElementById('shareStepFormat').style.display = 'none';
@@ -1490,11 +1541,20 @@
       document.getElementById('shareModal').style.display = 'none';
     }
 
-    function requestShareImage(format) {
+        function requestShareImage(format) {
       if (!pendingShareData) return;
 
-        document.querySelectorAll('.format-btn').forEach(b => b.disabled = true);
-        showToast('シェア画像を作成しています。少々お待ちください…');
+      document.querySelectorAll('.format-btn').forEach(b => b.disabled = true);
+
+      // 🌟報告投稿と同じ「投稿中」の枠を再利用し、画像作成用の見出し+
+      //   移り変わるステータス文言で進行中であることを見せる
+      document.getElementById('postingHeadline').innerText = '画像を作成しています';
+      document.getElementById('shareStepFormat').style.display = 'none';
+      document.getElementById('shareStepPosting').style.display = 'block';
+      startPostingStages(
+        ['画像を作成しています…', '最終調整をしています…', 'もう少しで完成します…'],
+        11000 // 🌟目安時間。実際の所要時間とズレていても、体感が心地よければ問題ない
+      );
 
       const url = GAS_URL
         + '?action=createShare'
@@ -1510,21 +1570,31 @@
 
           if (!result.success) {
             console.error('シェア画像作成エラー:', result.error);
-            showToast('画像の作成に失敗しました。もう一度お試しください。');
+            document.getElementById('shareStepPosting').style.display = 'none';
+            document.getElementById('shareStepFormat').style.display = 'block';
+            showToast('画像の作成に失敗しました。もう一度お試しください。', 'error');
             return;
           }
 
-          document.getElementById('shareStepFormat').style.display = 'none';
-          document.getElementById('shareStepResult').style.display = 'block';
-          document.getElementById('shareResult').innerHTML =
-            '<img src="' + result.imageUrl + '" alt="シェア画像">';
+          finishPostingStages();
+
+          setTimeout(() => {
+            document.getElementById('shareStepPosting').style.display = 'none';
+            document.getElementById('shareStepResult').style.display = 'block';
+            document.getElementById('shareResult').innerHTML =
+              '<img src="' + result.imageUrl + '" alt="シェア画像">';
 
           const shareText = encodeURIComponent(pendingShareData.category + 'を目撃 #イライラハザードマップ');
           const shareUrlEncoded = encodeURIComponent(result.shareUrl);
 
           // 🌟選ばれたSNSに応じて、開く先とボタンのラベルを切り替える
           const actionBtn = document.getElementById('shareActionBtn');
-          if (pendingSharePlatform === 'facebook') {
+           if (pendingSharePlatform === 'line') {
+            actionBtn.innerText = '💬 LINEでシェア';
+            actionBtn.onclick = () => {
+              window.open('https://social-plugins.line.me/lineit/share?url=' + shareUrlEncoded, '_blank');
+            };
+          } else if (pendingSharePlatform === 'facebook') {
             actionBtn.innerText = '📘 Facebookでシェア';
             actionBtn.onclick = () => {
               window.open('https://www.facebook.com/sharer/sharer.php?u=' + shareUrlEncoded, '_blank');
@@ -1542,15 +1612,18 @@
             };
           }
 
-          document.getElementById('shareCopyBtn').onclick = () => {
+           document.getElementById('shareCopyBtn').onclick = () => {
             navigator.clipboard.writeText(result.shareUrl)
               .then(() => showToast('リンクをコピーいたしました'))
               .catch(() => showToast('コピーに失敗しました。恐れ入りますが、リンクを長押ししてコピーしてください。'));
           };
+          }, 350); // 🌟修正⑩で開いたsetTimeoutの閉じ
         })
         .catch(() => {
           document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
-          showToast('通信状態が不安定なようです。もう一度お試しください。');
+          document.getElementById('shareStepPosting').style.display = 'none';
+          document.getElementById('shareStepFormat').style.display = 'block';
+          showToast('通信状態が不安定なようです。もう一度お試しください。', 'error');
         });
     }
   </script>
