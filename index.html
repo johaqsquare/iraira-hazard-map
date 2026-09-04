@@ -671,30 +671,35 @@
       }
     }, 8000);
 
-    const liffReadyPromise = (async function() {
-      try {
-        await liff.init({ liffId: '2010604774-3Szn0qI6' });
-        console.log('LIFF初期化成功。ログイン状態:', liff.isLoggedIn());
+function timeoutPromise(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-        if (!liff.isLoggedIn()) {
-          // 🌟liff.login()は画面遷移(LINEの認証画面へリダイレクト)を伴うため、
-          //   この関数の続きは実行されない(ページが離脱するため)。
-          //   liffCheckedはtrueにしない=スプラッシュ画面が表示されたまま遷移する。
-          liff.login();
-          return;
-        }
+const liffInitPromise = (async function() {
+  try {
+    await liff.init({ liffId: '2010604774-3Szn0qI6' });
+    console.log('LIFF初期化成功。ログイン状態:', liff.isLoggedIn());
 
-        const profile = await liff.getProfile();
-        userId = profile.userId;
-        console.log('プロフィール取得成功。userId:', userId);
-      } catch (err) {
-        console.error('LIFF初期化/プロフィール取得エラー:', err);
-        // 🌟失敗してもuserIdはGUEST_USERのまま。アプリの利用自体は続行できるようにする。
-      } finally {
-        liffChecked = true;
-        tryHideSplash();
-      }
-    })();
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return; // 画面遷移するため、以降は実行されない
+    }
+
+    const profile = await liff.getProfile();
+    userId = profile.userId;
+    console.log('プロフィール取得成功。userId:', userId);
+  } catch (err) {
+    console.error('LIFF初期化/プロフィール取得エラー:', err);
+  }
+})();
+
+// 🌟 liffInitPromise自体がハングしても、8秒で必ず先に進めるようにする。
+//   Promise.raceにより「本来の処理」と「タイムアウト」のうち早い方が採用される。
+const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(8000)])
+  .finally(() => {
+    liffChecked = true;
+    tryHideSplash();
+  });
     
     // 🌟ページ読み込み直後の自動的なgetCurrentPosition呼び出しは行わない。
     //   LINEアプリ内ブラウザ(LIFF)では、ユーザー操作を伴わない自動呼び出しが
