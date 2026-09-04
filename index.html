@@ -1601,12 +1601,13 @@ const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(8000)])
         .then(res => res.json())
         .then((result) => {
           document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
-
+        
           if (!result.success) {
             console.error('シェア画像作成エラー:', result.error);
             document.getElementById('shareStepPosting').style.display = 'none';
             document.getElementById('shareStepFormat').style.display = 'block';
-            showToast('画像の作成に失敗しました。もう一度お試しください。', 'error');
+            // 🌟【デバッグ用・後で戻す】result.errorの中身をそのまま画面に出す
+            showToast('DEBUG: ' + (result.error || '(エラー詳細なし result.success=false)'), 'error');
             return;
           }
 
@@ -1654,12 +1655,13 @@ const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(8000)])
           };
           }, 350); // 🌟修正⑩で開いたsetTimeoutの閉じ
         })
-        .catch(() => {
-          document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
-          document.getElementById('shareStepPosting').style.display = 'none';
-          document.getElementById('shareStepFormat').style.display = 'block';
-          showToast('通信状態が不安定なようです。もう一度お試しください。', 'error');
-        });
+      .catch((error) => {
+        document.querySelectorAll('.format-btn').forEach(b => b.disabled = false);
+        document.getElementById('shareStepPosting').style.display = 'none';
+        document.getElementById('shareStepFormat').style.display = 'block';
+        // 🌟【デバッグ用・後で戻す】fetch/JSON解析自体の失敗理由を画面に出す
+        showToast('DEBUG(catch): ' + (error && error.message ? error.message : String(error)), 'error');
+      });
     }
   </script>
   <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBMCEQHdlzcrcLI4hziAioehbIs4CRWerA&callback=initMap"></script>
