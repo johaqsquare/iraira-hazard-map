@@ -57,6 +57,7 @@
     #splashScreen .spinner {
       width: 28px; height: 28px; border: 3px solid rgba(255,255,255,0.4);
       border-top-color: white; border-radius: 50%; animation: splash-spin 0.8s linear infinite;
+      margin: 0 auto; /* 🌟スピナーが親要素(#splashLoading)の幅内で水平中央に来るよう修正 */
     }
     @keyframes splash-spin { to { transform: rotate(360deg); } }
    #splashScreen .splash-status { font-size: 12px; margin-top: 14px; opacity: 0.9; }
