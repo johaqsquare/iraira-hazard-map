@@ -694,6 +694,22 @@ const liffInitPromise = (async function() {
   }
 })();
 
+// 🌟【スプラッシュ表示専用】UI上いつまでも待たせないための、短めの8秒タイムアウト。
+//   ここで liffChecked = true になっても、liffInitPromise自体(本来の処理)は
+//   裏で継続して走り続けている点に注意。
+Promise.race([liffInitPromise, timeoutPromise(8000)]).finally(() => {
+  liffChecked = true;
+  tryHideSplash();
+});
+
+// 🌟【報告処理専用】submitReport()はこちらを待つ。ログイン直後のリダイレクト
+//   直後などで liff.getProfile() が普段より時間がかかるケースに対応するため、
+//   スプラッシュ用より長めの15秒を設定し、本来の処理をより辛抱強く待つ。
+//   liffInitPromise自体は同一のPromiseなので、8秒時点で未解決でも、
+//   その後15秒以内に解決すれば、ここでuserIdが正しく反映された状態で
+//   先に進める。
+const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(15000)]);
+
 // 🌟 liffInitPromise自体がハングしても、8秒で必ず先に進めるようにする。
 //   Promise.raceにより「本来の処理」と「タイムアウト」のうち早い方が採用される。
 const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(8000)])
