@@ -709,14 +709,6 @@ Promise.race([liffInitPromise, timeoutPromise(8000)]).finally(() => {
 //   その後15秒以内に解決すれば、ここでuserIdが正しく反映された状態で
 //   先に進める。
 const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(15000)]);
-
-// 🌟 liffInitPromise自体がハングしても、8秒で必ず先に進めるようにする。
-//   Promise.raceにより「本来の処理」と「タイムアウト」のうち早い方が採用される。
-const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(8000)])
-  .finally(() => {
-    liffChecked = true;
-    tryHideSplash();
-  });
     
     // 🌟ページ読み込み直後の自動的なgetCurrentPosition呼び出しは行わない。
     //   LINEアプリ内ブラウザ(LIFF)では、ユーザー操作を伴わない自動呼び出しが
