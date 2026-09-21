@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>イライラハザードマップ（錦糸町）</title>
+  <title>イライラ調査団（錦糸町）</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
@@ -470,6 +470,28 @@
       55%  { clip-path: inset(0% 0 0% 0); }    /* 🌟一瞬、全線が見えている状態を保持 */
       100% { clip-path: inset(0% 0 100% 0); }  /* 🌟近い側→遠い側へ向けて消えていく */
     }
+
+   #onboardingModal {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6); z-index: 4200; align-items: center; justify-content: center;
+  }
+  #onboardingModal .modal-content {
+    background: var(--color-glass-strong);
+    backdrop-filter: var(--blur-amt); -webkit-backdrop-filter: var(--blur-amt);
+    padding: 22px; border-radius: var(--radius-lg); width: 88%; max-width: 340px; box-sizing: border-box;
+    box-shadow: var(--shadow-soft); border: 1px solid rgba(255,255,255,0.6);
+  }
+  #onboardingModal h3 { margin: 10px 0 6px 0; font-size: 16px; color: var(--color-ink); text-align: center; }
+  #onboardingModal p.desc { font-size: 12px; color: var(--color-ink-soft); text-align: center; margin-bottom: 6px; }
+  .survey-option-btn {
+    display: block; width: 100%; padding: 12px 14px; margin-top: 8px;
+    border: 1px solid rgba(31,42,40,0.08); background: rgba(255,255,255,0.7);
+    border-radius: var(--radius-md); font-size: 13px; color: var(--color-ink); font-weight: 700;
+    text-align: left; font-family: 'Zen Maru Gothic', 'Noto Sans JP', sans-serif;
+    cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  .survey-option-btn:active { transform: scale(0.98); }
+  .survey-option-btn:hover { border-color: rgba(6,199,85,0.3); } 
   </style>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
@@ -477,7 +499,7 @@
 
 <div id="splashScreen">
     <div class="splash-pin"></div>
-    <h1>イライラハザードマップ</h1>
+    <h1>イライラ調査団</h1>
     <p class="sub">(仮) 錦糸町エリア</p>
 
     <div id="splashLocationPrompt">
@@ -594,6 +616,30 @@
     </div>
   </div>
 
+  <div id="onboardingModal">
+  <div class="modal-content">
+
+    <div id="onboardingStepNickname">
+      <div class="posting-icon">🔍</div>
+      <h3>イライラ調査団へ、ようこそ</h3>
+      <p class="desc">まずは、あなたの調査員としての名前を決めてください。</p>
+      <input type="text" id="onboardingNicknameInput" placeholder="ニックネームを入力" maxlength="12"
+        style="width:100%; padding:14px; border-radius:14px; border:1px solid rgba(31,42,40,0.12);
+        background:rgba(255,255,255,0.9); font-family:'Noto Sans JP',sans-serif; font-size:16px;
+        box-sizing:border-box; margin-top:10px;">
+      <div id="onboardingNicknameError" style="color:#D93F3F; font-size:12px; margin-top:6px; display:none;"></div>
+      <button id="onboardingNicknameNextBtn" onclick="onOnboardingNicknameNext()" style="margin-top:14px;">次へ</button>
+    </div>
+
+    <div id="onboardingStepSurvey" style="display:none;">
+      <h3>あなたが一番気になるのは?</h3>
+      <p class="desc">最も当てはまるものを1つ選んでください。</p>
+      <div id="onboardingSurveyOptions"></div>
+    </div>
+
+  </div>
+</div>
+
   <div id="menu-bar">
     <button id="btn-recent" class="toggle-btn active" onclick="switchMode('recent')">直近1時間</button>
     <button id="btn-mine" class="toggle-btn" onclick="switchMode('mine')">自分の報告</button>
@@ -709,6 +755,111 @@ Promise.race([liffInitPromise, timeoutPromise(8000)]).finally(() => {
 //   その後15秒以内に解決すれば、ここでuserIdが正しく反映された状態で
 //   先に進める。
 const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(15000)]);
+
+// 🌟 アンケートの選択肢。GAS側のSURVEY_OPTIONSと同じ内容(現状4つ確定、残り4つは仮)。
+//    フロント側にも同じリストを持たせ、選択画面の描画に使う。
+const SURVEY_OPTIONS = [
+  'ポイ捨て', '違法喫煙', 'キャッチ', 'ペットの糞',
+  '仮の選択肢5', '仮の選択肢6', '仮の選択肢7', '仮の選択肢8'
+];
+
+let onboardingNickname = null; // 🌟入力中のニックネームを一時保持
+let onboardingResolver = null; // 🌟オンボーディング完了時にsubmitReport側へ処理を戻すためのPromise resolver
+
+// 🌟 このuserIdが初回参加かどうかをGASに問い合わせ、
+//    必要であればオンボーディングモーダルを表示して完了を待つ。
+//    (登録済み、またはオンボーディング完了後は、何もせず即座に解決する)
+async function ensureUserRegistered() {
+  try {
+    const url = GAS_URL + '?action=checkUserRegistration&userId=' + encodeURIComponent(userId);
+    const res = await fetch(url);
+    const result = await res.json();
+
+    if (result.success && result.registered) {
+      return; // 🌟既に登録済み。何もしない
+    }
+  } catch (e) {
+    console.error('登録確認エラー:', e);
+    return; // 🌟確認自体が失敗した場合は、オンボーディングをスキップして報告を続行する
+  }
+
+  // 🌟未登録の場合、オンボーディングモーダルを表示し、完了まで待つ
+  return new Promise((resolve) => {
+    onboardingResolver = resolve;
+    openOnboardingModal();
+  });
+}
+
+function openOnboardingModal() {
+  document.getElementById('onboardingNicknameInput').value = '';
+  document.getElementById('onboardingNicknameError').style.display = 'none';
+  document.getElementById('onboardingStepNickname').style.display = 'block';
+  document.getElementById('onboardingStepSurvey').style.display = 'none';
+  document.getElementById('onboardingModal').style.display = 'flex';
+}
+
+function onOnboardingNicknameNext() {
+  const input = document.getElementById('onboardingNicknameInput');
+  const nickname = input.value.trim();
+  const errorEl = document.getElementById('onboardingNicknameError');
+
+  if (!nickname) {
+    errorEl.innerText = 'ニックネームを入力してください';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  onboardingNickname = nickname;
+  errorEl.style.display = 'none';
+
+  // 🌟 アンケート選択肢を描画
+  const optionsContainer = document.getElementById('onboardingSurveyOptions');
+  optionsContainer.innerHTML = '';
+  SURVEY_OPTIONS.forEach(function(option) {
+    const btn = document.createElement('button');
+    btn.className = 'survey-option-btn';
+    btn.innerText = option;
+    btn.onclick = function() { onOnboardingSurveySelect(option); };
+    optionsContainer.appendChild(btn);
+  });
+
+  document.getElementById('onboardingStepNickname').style.display = 'none';
+  document.getElementById('onboardingStepSurvey').style.display = 'block';
+}
+
+function onOnboardingSurveySelect(surveyAnswer) {
+  const url = GAS_URL
+    + '?action=registerUser'
+    + '&userId=' + encodeURIComponent(userId)
+    + '&nickname=' + encodeURIComponent(onboardingNickname)
+    + '&surveyAnswer=' + encodeURIComponent(surveyAnswer);
+
+  fetch(url)
+    .then(res => res.json())
+    .then((result) => {
+      if (result.success) {
+        document.getElementById('onboardingModal').style.display = 'none';
+        if (onboardingResolver) {
+          onboardingResolver();
+          onboardingResolver = null;
+        }
+      } else {
+        // 🌟 ニックネーム重複・NGワード等のエラー。入力画面に戻す
+        document.getElementById('onboardingStepSurvey').style.display = 'none';
+        document.getElementById('onboardingStepNickname').style.display = 'block';
+        const errorEl = document.getElementById('onboardingNicknameError');
+        errorEl.innerText = result.error || '登録に失敗しました。もう一度お試しください。';
+        errorEl.style.display = 'block';
+      }
+    })
+    .catch(() => {
+      document.getElementById('onboardingStepSurvey').style.display = 'none';
+      document.getElementById('onboardingStepNickname').style.display = 'block';
+      const errorEl = document.getElementById('onboardingNicknameError');
+      errorEl.innerText = '通信状態が不安定なようです。もう一度お試しください。';
+      errorEl.style.display = 'block';
+    });
+}
     
     // 🌟ページ読み込み直後の自動的なgetCurrentPosition呼び出しは行わない。
     //   LINEアプリ内ブラウザ(LIFF)では、ユーザー操作を伴わない自動呼び出しが
@@ -748,6 +899,7 @@ const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(15000)]);
       );
     }
 
+    
     // 🌟「スキップして地図を見る」が押された時の処理
     function onSplashSkipClick() {
       locationChecked = true;
@@ -1209,6 +1361,11 @@ const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(15000)]);
       //   GUEST_USERのまま報告が送信されることを防ぐ。
       await liffReadyPromise;
 
+      // 🌟 初回参加者の場合、ここでオンボーディング(ニックネーム+アンケート)を挟む。
+      //   登録済みの場合は即座に解決するので、通常のフローには影響しない。
+      btn.innerText = '調査団への参加状況を確認しています...';
+      await ensureUserRegistered();
+        
       btn.innerText = '現在地を確認しています...';
 
       if (!navigator.geolocation) {
@@ -1501,7 +1658,7 @@ const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(15000)]);
     function shareLocationLink() {
       if (!pendingShareData) return;
       const url = 'https://liff.line.me/2010604774-3Szn0qI6?lat=' + pendingShareData.lat + '&lng=' + pendingShareData.lng;
-      const shareTitle = pendingShareData.category + 'の報告地点 | イライラハザードマップ';
+      const shareTitle = pendingShareData.category + 'の報告地点 | イライラ調査団';
 
       // 🌟スマホのOS標準共有シートが使える場合はそちらを優先(LINE/メモ帳/コピーなど選択肢が広い)
       if (navigator.share) {
@@ -1628,7 +1785,7 @@ const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(15000)]);
               '<img id="shareResultImg" src="' + result.imageUrl + '" alt="シェア画像">';
             attachImageRetry('shareResultImg', result.imageUrl);
 
-          const shareText = encodeURIComponent(pendingShareData.category + 'を目撃 #イライラハザードマップ');
+          const shareText = encodeURIComponent(pendingShareData.category + 'を目撃 #イライラ調査団');
           const shareUrlEncoded = encodeURIComponent(result.shareUrl);
 
           // 🌟選ばれたSNSに応じて、開く先とボタンのラベルを切り替える
@@ -1646,7 +1803,7 @@ const liffReadyPromise = Promise.race([liffInitPromise, timeoutPromise(15000)]);
           } else if (pendingSharePlatform === 'threads') {
             actionBtn.innerText = '@ Threadsでシェア';
             actionBtn.onclick = () => {
-              const threadsText = encodeURIComponent(pendingShareData.category + 'を目撃 #イライラハザードマップ ' + result.shareUrl);
+              const threadsText = encodeURIComponent(pendingShareData.category + 'を目撃 #イライラ調査団 ' + result.shareUrl);
               window.open('https://www.threads.net/intent/post?text=' + threadsText, '_blank');
             };
           } else {
