@@ -766,24 +766,30 @@ const SURVEY_OPTIONS = [
 let onboardingNickname = null; // 🌟入力中のニックネームを一時保持
 let onboardingResolver = null; // 🌟オンボーディング完了時にsubmitReport側へ処理を戻すためのPromise resolver
 
-// 🌟 このuserIdが初回参加かどうかをGASに問い合わせ、
-//    必要であればオンボーディングモーダルを表示して完了を待つ。
-//    (登録済み、またはオンボーディング完了後は、何もせず即座に解決する)
 async function ensureUserRegistered() {
+  // 🌟 何らかの理由でLIFFの本人確認が完了せず、まだGUEST_USERのままの場合、
+  //   その仮のIDに対してニックネームを登録してしまうと、後で本物のuserIdが
+  //   取得できた別の機会や、他の人のGUEST_USER状態と混同されてしまう。
+  //   そのため、GUEST_USERのままではオンボーディングを行わず、そのまま
+  //   通常の投稿フローに進める(ニックネームなしの投稿として扱う)。
+  if (userId === 'GUEST_USER') {
+    console.warn('userIdが未確定(GUEST_USER)のため、オンボーディングをスキップします。');
+    return;
+  }
+
   try {
     const url = GAS_URL + '?action=checkUserRegistration&userId=' + encodeURIComponent(userId);
     const res = await fetch(url);
     const result = await res.json();
 
     if (result.success && result.registered) {
-      return; // 🌟既に登録済み。何もしない
+      return;
     }
   } catch (e) {
     console.error('登録確認エラー:', e);
-    return; // 🌟確認自体が失敗した場合は、オンボーディングをスキップして報告を続行する
+    return;
   }
 
-  // 🌟未登録の場合、オンボーディングモーダルを表示し、完了まで待つ
   return new Promise((resolve) => {
     onboardingResolver = resolve;
     openOnboardingModal();
