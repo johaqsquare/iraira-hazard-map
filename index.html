@@ -674,7 +674,10 @@
       <option value="ペットの糞">ペットの糞</option>
     </select>
     <button id="submitBtn" onclick="submitReport()">現在地を取得して報告する</button>
-    
+    <!-- 🌟【デバッグ用・後で削除】LIFFの挙動確認用の簡易ログ表示 -->
+    <div id="debugLogBox" style="margin-top:10px; padding:8px; background:#000; color:#0f0;
+      font-family:monospace; font-size:10px; max-height:120px; overflow-y:auto; border-radius:6px;
+      white-space:pre-wrap; word-break:break-all;"></div>
     <div style="text-align: center; margin-top: 15px;">
       <a href="#" onclick="document.getElementById('helpModal').style.display='flex'; return false;" style="font-size: 12px; color: #0066cc; text-decoration: underline;">📍 ピンの位置が大きくずれる場合はこちら</a>
     </div>
@@ -726,8 +729,9 @@ const liffInitPromise = (async function() {
   try {
     await liff.init({ liffId: '2010604774-3Szn0qI6' });
     console.log('LIFF初期化成功。ログイン状態:', liff.isLoggedIn());
-
+    debugLog('LIFF初期化成功。ログイン状態: ' + liff.isLoggedIn());
     if (!liff.isLoggedIn()) {
+      debugLog('未ログインのため、liff.login()を呼び出します');
       liff.login();
       return; // 画面遷移するため、以降は実行されない
     }
@@ -735,8 +739,10 @@ const liffInitPromise = (async function() {
     const profile = await liff.getProfile();
     userId = profile.userId;
     console.log('プロフィール取得成功。userId:', userId);
+    debugLog('プロフィール取得成功。userId: ' + userId);
   } catch (err) {
     console.error('LIFF初期化/プロフィール取得エラー:', err);
+    debugLog('LIFFエラー: ' + (err && err.message ? err.message : String(err)));
   }
 })();
 
@@ -1507,7 +1513,14 @@ function onOnboardingSurveySelect(surveyAnswer) {
     }
 
     let messageHideTimer = null;
-
+     // 🌟【デバッグ用・後で削除】画面上にログを溜めて表示する簡易関数
+    function debugLog(message) {
+      const box = document.getElementById('debugLogBox');
+      if (!box) return;
+      const time = new Date().toLocaleTimeString('ja-JP');
+      box.innerText += '[' + time + '] ' + message + '\n';
+      box.scrollTop = box.scrollHeight;
+    }
     // 🌟 ブラウザ標準のconfirm()の代わりに使う、アプリ内の確認モーダル。
     //   Promiseで結果(true=削除する/false=キャンセル)を返すので、
     //   await showConfirmModal(...) の形で呼び出せる。
