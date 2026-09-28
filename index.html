@@ -272,6 +272,11 @@
       color: var(--color-ink-soft); font-size: 11px; margin-bottom: 12px;
     }
     .iw-divider { height: 1px; background: rgba(31,42,40,0.1); margin: 0 0 10px 0; }
+    .iw-reporter { font-size: 11px; font-weight: 700; color: var(--color-ink); margin-bottom: 8px; }
+    .iw-tier {
+      display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+      background: rgba(6,199,85,0.12); color: var(--color-primary-deep); font-size: 10px;
+    }
     .iw-question { font-size: 11px; font-weight: 700; color: var(--color-ink); margin-bottom: 7px; }
     .iw-btn-row { display: flex; gap: 6px; }
     .iw-fb-btn {
@@ -1252,6 +1257,15 @@ function onOnboardingSurveySelect(surveyAnswer) {
       activeInfoWindow = iw;
     }
 
+        // 🌟 ユーザー入力(ニックネームなど)をHTMLに埋め込む前に、特殊文字を無害化する
+    function escapeHtmlJS(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+    
     function getTimeAgo(dateString) {
       if (!dateString) return 'たった今';
       const now = new Date();
@@ -1288,10 +1302,16 @@ function onOnboardingSurveySelect(surveyAnswer) {
       //   「たった今」と誤表示されていた。
       const timeText = getTimeAgo(point.timestamp);
 
+      // 🌟 投稿者の表示。ニックネーム未登録の投稿(登録機能より前のものなど)は「匿名の調査員」とする
+      const reporterHtml = point.nickname
+        ? `<div class="iw-reporter">🔍 ${escapeHtmlJS(point.nickname)}<span class="iw-tier">${point.tier}</span></div>`
+        : `<div class="iw-reporter">🔍 匿名の調査員</div>`;
+
       let contentHtml = `
         <div class="iw-card">
           <div class="iw-title">${point.category}</div>
           <div class="iw-time">⌚ ${timeText}</div>
+          ${reporterHtml}
 
           <div class="iw-divider"></div>
           <div class="iw-question">📍 位置は正確でしたか？</div>
