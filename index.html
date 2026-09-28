@@ -1307,6 +1307,15 @@ function onOnboardingSurveySelect(surveyAnswer) {
         ? `<div class="iw-reporter">🔍 ${escapeHtmlJS(point.nickname)}<span class="iw-tier">${point.tier}</span></div>`
         : `<div class="iw-reporter">🔍 匿名の調査員</div>`;
 
+      // 🌟 自分の投稿には、自分でフィードバックを付けられないようにする(正答率の水増し防止)
+      const feedbackHtml = isMine ? '' : `
+          <div class="iw-question">📍 位置は正確でしたか？</div>
+          <div class="iw-btn-row">
+            <button class="iw-fb-btn iw-fb-yes" onclick="sendFeedback(${point.index}, 'YES')">はい</button>
+            <button class="iw-fb-btn iw-fb-no" onclick="sendFeedback(${point.index}, 'NO')">いいえ</button>
+          </div>
+      `;
+
       let contentHtml = `
         <div class="iw-card">
           <div class="iw-title">${point.category}</div>
@@ -1314,11 +1323,7 @@ function onOnboardingSurveySelect(surveyAnswer) {
           ${reporterHtml}
 
           <div class="iw-divider"></div>
-          <div class="iw-question">📍 位置は正確でしたか？</div>
-          <div class="iw-btn-row">
-            <button class="iw-fb-btn iw-fb-yes" onclick="sendFeedback(${point.index}, 'YES')">はい</button>
-            <button class="iw-fb-btn iw-fb-no" onclick="sendFeedback(${point.index}, 'NO')">いいえ</button>
-          </div>
+          ${feedbackHtml}
           <div class="iw-share-row">
             <button class="iw-share-btn" onclick="shareExistingPin(${point.lat}, ${point.lng}, '${point.category}')">🔗 この報告をシェアする</button>
           </div>
