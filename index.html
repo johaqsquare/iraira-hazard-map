@@ -277,6 +277,16 @@
       display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
       background: rgba(6,199,85,0.12); color: var(--color-primary-deep); font-size: 10px;
     }
+    #badgeDetailModal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6); z-index: 4300; align-items: center; justify-content: center;
+    }
+    .iw-badge-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+    .iw-badge-icon {
+      width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,0.7);
+      display: flex; align-items: center; justify-content: center; font-size: 14px;
+      border: 1px solid rgba(31,42,40,0.1); cursor: pointer;
+    }
     .iw-question { font-size: 11px; font-weight: 700; color: var(--color-ink); margin-bottom: 7px; }
     .iw-btn-row { display: flex; gap: 6px; }
     .iw-fb-btn {
@@ -645,6 +655,15 @@
   </div>
 </div>
 
+<div id="badgeDetailModal">
+<div class="modal-content" style="text-align:center;">
+  <div id="badgeDetailIcon" style="font-size:52px; margin-bottom:10px;"></div>
+  <h3 id="badgeDetailName"></h3>
+  <p class="desc" id="badgeDetailDescription"></p>
+  <button class="close-btn" onclick="closeBadgeDetailModal()">閉じる</button>
+</div>
+</div>
+
   <div id="menu-bar">
     <button id="btn-recent" class="toggle-btn active" onclick="switchMode('recent')">直近1時間</button>
     <button id="btn-mine" class="toggle-btn" onclick="switchMode('mine')">自分の報告</button>
@@ -694,6 +713,7 @@
 
     let map, activeInfoWindow;
     let markerList = []; 
+    let pinBadgeRegistry = {}; // 🌟 pinKey(例:'pin_5') → そのピンのバッジ配列、の対応を保持する
     let moyaCircles = [];
     let knownPinIndexes = new Set();
     let userId = 'GUEST_USER';
@@ -1279,14 +1299,13 @@ function onOnboardingSurveySelect(surveyAnswer) {
       return Math.floor(diffHour / 24) + '日前';
     }
 
-    function createMarkerObj(point, isNew) {
+      function createMarkerObj(point, isNew) {
       const isMine = point.userId === userId;
 
       const marker = new google.maps.Marker({
         position: { lat: point.lat, lng: point.lng },
         title: point.category,
         animation: isNew ? google.maps.Animation.DROP : null,
-        // 🌟自分の報告=緑(LINEカラー)、他人の報告=赤、で色分け
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           scale: 9,
@@ -1296,17 +1315,24 @@ function onOnboardingSurveySelect(surveyAnswer) {
           strokeWeight: 2
         }
       });
-      
-      // 🌟修正: isNew(初描画かどうか)ではなく、常に実際の投稿時刻から経過時間を計算する。
-      //   以前は isNew===true のとき無条件で「たった今」と表示していたため、
-      //   ページ初回読み込み時(knownPinIndexesが空)は既存の古い投稿もすべて
-      //   「たった今」と誤表示されていた。
+
       const timeText = getTimeAgo(point.timestamp);
 
       // 🌟 投稿者の表示。ニックネーム未登録の投稿(登録機能より前のものなど)は「匿名の調査員」とする
       const reporterHtml = point.nickname
         ? `<div class="iw-reporter">🔍 ${escapeHtmlJS(point.nickname)}<span class="iw-tier">${point.tier}</span></div>`
         : `<div class="iw-reporter">🔍 匿名の調査員</div>`;
+
+      // 🌟 このピンの投稿者が持つバッジを、アイコンとして並べる。
+      //   pinKeyという、このピン固有の識別子をdata属性に埋め込み、
+      //   タップ時にどのピンの何番目のバッジかを正しく引けるようにする。
+      const badgeList = point.badges || [];
+      const pinKey = 'pin_' + point.index;
+      const badgeRowHtml = badgeList.length > 0
+        ? `<div class="iw-badge-row">${badgeList.map(function(b, i) {
+            return `<span class="iw-badge-icon" onclick="openMarkerBadgeDetail('${pinKey}', ${i})">${b.icon}</span>`;
+          }).join('')}</div>`
+        : '';
 
       // 🌟 自分の投稿には、自分でフィードバックを付けられないようにする(正答率の水増し防止)
       const feedbackHtml = isMine ? '' : `
@@ -1322,6 +1348,75 @@ function onOnboardingSurveySelect(surveyAnswer) {
           <div class="iw-title">${point.category}</div>
           <div class="iw-time">⌚ ${timeText}</div>
           ${reporterHtml}
+          ${badgeRowHtml}
+
+          <div class="iw-divider"></div>
+          ${feedbackHtml}
+          <div class="iw-share-row">
+            <button class="iw-share-btn" onclick="shareExistingPin(${point.lat}, ${point.lng}, '${point.category}')">🔗 この報告をシェアする</button>
+          </div>
+      `;
+
+      if (isMine) {
+        contentHtml += `
+          <div class="iw-delete-row">
+            <button class="iw-delete-btn" onclick="deletePin(${point.index}, '${point.userId}')">🗑️ この報告を削除する</button>
+          </div>
+        `;
+      }
+
+      contentHtml += `</div>`;
+      const infoWindow = new google.maps.InfoWindow({ content: contentHtml });
+      infoWindow.baseContent = contentHtml;
+
+      marker.addListener("click", () => {
+        if (activeInfoWindow) activeInfoWindow.close();
+        infoWindow.open(map, marker);
+        activeInfoWindow = infoWindow;
+      });
+
+      // 🌟 このピン固有のバッジ一覧を、pinKeyをキーにしてグローバルに保存しておく。
+      //   これにより、タップされた瞬間に「どのピンの何番目のバッジか」を正しく引ける。
+      pinBadgeRegistry[pinKey] = badgeList;
+
+      markerList.push({ marker: marker, data: point });
+    }
+      
+      // 🌟修正: isNew(初描画かどうか)ではなく、常に実際の投稿時刻から経過時間を計算する。
+      //   以前は isNew===true のとき無条件で「たった今」と表示していたため、
+      //   ページ初回読み込み時(knownPinIndexesが空)は既存の古い投稿もすべて
+      //   「たった今」と誤表示されていた。
+      const timeText = getTimeAgo(point.timestamp);
+
+      const reporterHtml = point.nickname
+        ? `<div class="iw-reporter">🔍 ${escapeHtmlJS(point.nickname)}<span class="iw-tier">${point.tier}</span></div>`
+        : `<div class="iw-reporter">🔍 匿名の調査員</div>`;
+
+      // 🌟 このピンの投稿者が持つバッジを、アイコンとして並べる。
+      //   クリックすると、そのバッジの詳細モーダルが開く(this.pinBadgesという形で、
+      //   マーカーごとにバッジ一覧をひもづけて保持しておく必要がある)
+      const badgeList = point.badges || [];
+      const badgeRowHtml = badgeList.length > 0
+        ? `<div class="iw-badge-row">${badgeList.map(function(b, i) {
+            return `<span class="iw-badge-icon" onclick="openMarkerBadgeDetail(${point.index}, ${i})">${b.icon}</span>`;
+          }).join('')}</div>`
+        : '';
+
+      // 🌟 自分の投稿には、自分でフィードバックを付けられないようにする(正答率の水増し防止)
+      const feedbackHtml = isMine ? '' : `
+          <div class="iw-question">📍 位置は正確でしたか？</div>
+          <div class="iw-btn-row">
+            <button class="iw-fb-btn iw-fb-yes" onclick="sendFeedback(${point.index}, 'YES')">はい</button>
+            <button class="iw-fb-btn iw-fb-no" onclick="sendFeedback(${point.index}, 'NO')">いいえ</button>
+          </div>
+      `;
+
+      let contentHtml = `
+        <div class="iw-card">
+          <div class="iw-title">${point.category}</div>
+          <div class="iw-time">⌚ ${timeText}</div>
+          ${reporterHtml}
+          ${badgeRowHtml}
 
           <div class="iw-divider"></div>
           ${feedbackHtml}
@@ -1763,7 +1858,22 @@ function onOnboardingSurveySelect(surveyAnswer) {
       document.getElementById('shareModal').style.display = 'none';
     }
 
-        // 🌟 画像の読み込みに失敗した場合、公開反映のタイムラグが原因である可能性が高いため、
+    function openMarkerBadgeDetail(pinKey, badgeIndex) {
+      const badgeList = pinBadgeRegistry[pinKey];
+      if (!badgeList) return;
+      const badge = badgeList[badgeIndex];
+      if (!badge) return;
+      document.getElementById('badgeDetailIcon').innerText = badge.icon;
+      document.getElementById('badgeDetailName').innerText = badge.name;
+      document.getElementById('badgeDetailDescription').innerText = badge.description;
+      document.getElementById('badgeDetailModal').style.display = 'flex';
+    }
+
+    function closeBadgeDetailModal() {
+      document.getElementById('badgeDetailModal').style.display = 'none';
+    }
+    
+    // 🌟 画像の読み込みに失敗した場合、公開反映のタイムラグが原因である可能性が高いため、
     //   少し間を空けて自動的に再読み込みを試みる(最大4回、2秒間隔)
    function attachImageRetry(imgElementId, originalUrl) {
       let retryCount = 0;
