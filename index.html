@@ -283,10 +283,14 @@
     }
     .iw-badge-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
     .iw-badge-icon {
-      width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,0.7);
-      display: flex; align-items: center; justify-content: center; font-size: 14px;
-      border: 1px solid rgba(31,42,40,0.1); cursor: pointer;
+      width: 34px; height: 34px; border-radius: 50%;
+      background: linear-gradient(135deg, rgba(6,199,85,0.15), rgba(6,199,85,0.05));
+      display: flex; align-items: center; justify-content: center; font-size: 17px;
+      border: 1.5px solid rgba(6,199,85,0.35); cursor: pointer;
+      box-shadow: 0 3px 8px rgba(31,42,40,0.12);
+      transition: transform 0.15s ease;
     }
+    .iw-badge-icon:active { transform: scale(0.88); }
     .iw-question { font-size: 11px; font-weight: 700; color: var(--color-ink); margin-bottom: 7px; }
     .iw-btn-row { display: flex; gap: 6px; }
     .iw-fb-btn {
@@ -944,9 +948,10 @@ function onOnboardingSurveySelect(surveyAnswer) {
       tryHideSplash();
     }
 
-    // 🌟地図の準備・位置情報の確認(ボタン操作 or スキップ)、両方が終わってからスプラッシュを閉じる
      function tryHideSplash() {
-      if (!mapReady || !locationChecked || !liffChecked) return; 
+      // 🌟 位置情報は、投稿時・現在地ボタン押下時にのみ確認する。
+      //   スプラッシュ画面はLINEログインの確認(liffChecked)のみを待つ。
+      if (!mapReady || !liffChecked) return;
 
       const splash = document.getElementById('splashScreen');
       splash.style.display = 'none';
@@ -954,12 +959,6 @@ function onOnboardingSurveySelect(surveyAnswer) {
       if (sharedLinkLocation && map) {
         map.panTo(sharedLinkLocation);
         map.setZoom(18);
-      } else if (initialUserLocation && map) {
-        updateUserLocationMarker(initialUserLocation.lat, initialUserLocation.lng, initialUserAccuracy);
-        map.panTo(initialUserLocation);
-        map.setZoom(17);
-      } else {
-        showToast('位置情報をご確認いただけませんでした', 'info');
       }
     }
 
