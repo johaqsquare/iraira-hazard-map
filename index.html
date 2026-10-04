@@ -278,8 +278,9 @@
       background: rgba(6,199,85,0.12); color: var(--color-primary-deep); font-size: 10px;
     }
     #badgeDetailModal {
-      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.6); z-index: 4300; align-items: center; justify-content: center;
+      display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background-color: rgba(0,0,0,0.6) !important; z-index: 4300;
+      align-items: center; justify-content: center;
     }
     .iw-badge-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
     .iw-badge-icon {
@@ -1563,12 +1564,34 @@ function onOnboardingSurveySelect(surveyAnswer) {
     let messageHideTimer = null;
      // 🌟【デバッグ用・後で削除】画面上にログを溜めて表示する簡易関数
     function debugLog(message) {
+      const time = new Date().toLocaleTimeString('ja-JP');
+      const line = '[' + time + '] ' + message;
+
+      // 🌟 ページがリダイレクトされて消えても追えるよう、localStorageにも蓄積しておく
+      //   (直近20行だけ保持。古いものは自動的に捨てる)
+      try {
+        const stored = JSON.parse(localStorage.getItem('debugLogHistory') || '[]');
+        stored.push(line);
+        while (stored.length > 20) stored.shift();
+        localStorage.setItem('debugLogHistory', JSON.stringify(stored));
+      } catch (e) { /* localStorageが使えない場合は無視 */ }
+
       const box = document.getElementById('debugLogBox');
       if (!box) return;
-      const time = new Date().toLocaleTimeString('ja-JP');
-      box.innerText += '[' + time + '] ' + message + '\n';
+      box.innerText += line + '\n';
       box.scrollTop = box.scrollHeight;
     }
+
+    // 🌟 ページ読み込み時、前回までの履歴をまず表示する(リダイレクトで消えたログも遡れる)
+    function renderDebugLogHistory() {
+      try {
+        const stored = JSON.parse(localStorage.getItem('debugLogHistory') || '[]');
+        const box = document.getElementById('debugLogBox');
+        if (!box || stored.length === 0) return;
+        box.innerText = '--- 前回までの履歴 ---\n' + stored.join('\n') + '\n--- 今回のログ ---\n';
+      } catch (e) { /* 無視 */ }
+    }
+    renderDebugLogHistory();
     // 🌟 ブラウザ標準のconfirm()の代わりに使う、アプリ内の確認モーダル。
     //   Promiseで結果(true=削除する/false=キャンセル)を返すので、
     //   await showConfirmModal(...) の形で呼び出せる。
