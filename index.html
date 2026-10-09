@@ -755,6 +755,9 @@ const liffInitPromise = (async function() {
     debugLog('LIFF初期化成功。ログイン状態: ' + liff.isLoggedIn());
     if (!liff.isLoggedIn()) {
       debugLog('未ログインのため、liff.login()を呼び出します');
+      // 🌟 リダイレクトで画面が切り替わる直前に、ユーザーに状況を伝える
+      const statusEl = document.getElementById('splashStatus');
+      if (statusEl) statusEl.innerText = 'ログイン画面に移動しています...';
       liff.login();
       return; // 画面遷移するため、以降は実行されない
     }
