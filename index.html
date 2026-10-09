@@ -753,6 +753,7 @@ const liffInitPromise = (async function() {
     await liff.init({ liffId: '2010604774-3Szn0qI6' });
     console.log('LIFF初期化成功。ログイン状態:', liff.isLoggedIn());
     debugLog('LIFF初期化成功。ログイン状態: ' + liff.isLoggedIn());
+    debugLog('LINEアプリ内: ' + liff.isInClient() + ' / OS: ' + liff.getOS());
     if (!liff.isLoggedIn()) {
       debugLog('未ログインのため、liff.login()を呼び出します');
       // 🌟 リダイレクトで画面が切り替わる直前に、ユーザーに状況を伝える
