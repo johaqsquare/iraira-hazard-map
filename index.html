@@ -770,13 +770,22 @@ function timeoutPromise(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// 🌟 LIFFブラウザの外で開かれている時に、LIFFのURLへ誘導するバナーを出す。
-//   共有リンクの ?lat=...&lng=... は引き継ぐ。
+// 🌟 LIFFのURL(アプリの正規の入口)を作る。共有リンクの緯度経度だけ引き継ぐ。
+//   window.location.search をそのまま使わないのは、ログイン戻りの時に付く
+//   code/state などの余計なパラメータを持ち込まないため。
+function buildLiffEntryUrl() {
+  let url = 'https://liff.line.me/2010604774-3Szn0qI6';
+  if (sharedLinkLocation) {
+    url += '?lat=' + sharedLinkLocation.lat + '&lng=' + sharedLinkLocation.lng;
+  }
+  return url;
+}
+
 function showExternalBrowserBanner() {
   const banner = document.getElementById('externalBrowserBanner');
   const link = document.getElementById('externalBrowserBannerLink');
   if (!banner || !link) return;
-  link.href = 'https://liff.line.me/2010604774-3Szn0qI6' + window.location.search;
+  link.href = buildLiffEntryUrl();
   banner.style.display = 'flex';
 }
 
@@ -791,12 +800,30 @@ const liffInitPromise = (async function() {
       showExternalBrowserBanner();
     }
     if (!liff.isLoggedIn()) {
-      debugLog('未ログインのため、liff.login()を呼び出します');
-      // 🌟 リダイレクトで画面が切り替わる直前に、ユーザーに状況を伝える
       const statusEl = document.getElementById('splashStatus');
+
+      // 🌟 LIFFブラウザの外で未ログインの場合、liff.login()の往復が不安定の原因になる。
+      //   まず、LIFFのURLからの入り直しを1回だけ試す。
+      //   無限ループ防止のため、直近60秒以内に試していたら、この処理は飛ばす。
+      let recentlyTried = false;
+      try {
+        recentlyTried = (Date.now() - Number(localStorage.getItem('liffEntryTriedAt') || 0)) < 60000;
+      } catch (e) {
+        recentlyTried = true; // localStorageが使えない場合は、従来通りの動きにする
+      }
+
+      if (!liff.isInClient() && !recentlyTried) {
+        try { localStorage.setItem('liffEntryTriedAt', String(Date.now())); } catch (e) {}
+        debugLog('LIFFブラウザ外で未ログインのため、LIFFのURLへ移動します');
+        if (statusEl) statusEl.innerText = 'LINEで開き直しています...';
+        location.replace(buildLiffEntryUrl());
+        return new Promise(function() {}); // 🌟 遷移が終わるまで、スプラッシュを閉じさせない
+      }
+
+      debugLog('未ログインのため、liff.login()を呼び出します');
       if (statusEl) statusEl.innerText = 'ログイン画面に移動しています...';
       liff.login();
-      return; // 画面遷移するため、以降は実行されない
+      return new Promise(function() {}); // 🌟 同上。遷移が終わるまで、スプラッシュを閉じさせない
     }
 
     const profile = await liff.getProfile();
