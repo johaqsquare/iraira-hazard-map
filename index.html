@@ -792,6 +792,13 @@ function showExternalBrowserBanner() {
 const liffInitPromise = (async function() {
   try {
     await liff.init({ liffId: '2010604774-3Szn0qI6' });
+    // 🌟【テスト用・後で削除】?debugLogout=1 を付けて開くと、強制的にログアウトして初期状態に戻す
+    if (urlParams.get('debugLogout') === '1') {
+      try { localStorage.removeItem('liffEntryTriedAt'); } catch (e) {}
+      if (liff.isLoggedIn()) liff.logout();
+      location.replace(location.pathname);
+      return new Promise(function() {});
+    }
     console.log('LIFF初期化成功。ログイン状態:', liff.isLoggedIn());
     debugLog('LIFF初期化成功。ログイン状態: ' + liff.isLoggedIn());
     debugLog('LINEアプリ内: ' + liff.isInClient() + ' / OS: ' + liff.getOS());
