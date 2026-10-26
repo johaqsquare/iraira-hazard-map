@@ -298,6 +298,15 @@
       background-color: rgba(0,0,0,0.6) !important; z-index: 4300;
       align-items: center; justify-content: center;
     }
+    #badgeDetailModal .modal-content {
+      background: var(--color-glass-strong);
+      backdrop-filter: var(--blur-amt); -webkit-backdrop-filter: var(--blur-amt);
+      padding: 22px; border-radius: var(--radius-lg); width: 85%; max-width: 300px; box-sizing: border-box;
+      box-shadow: var(--shadow-soft); border: 1px solid rgba(255,255,255,0.6);
+    }
+    #badgeDetailModal h3 { margin: 0 0 8px 0; font-size: 16px; color: var(--color-ink); }
+    #badgeDetailModal p.desc { font-size: 13px; line-height: 1.6; color: var(--color-ink-soft); margin: 0 0 6px 0; }
+    #badgeDetailModal .close-btn { background: #ccc; color: #333; margin-top: 15px; padding: 10px; width: 100%; box-shadow: none; }
     .iw-badge-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
     .iw-badge-icon {
       width: 34px; height: 34px; border-radius: 50%;
